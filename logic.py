@@ -27,6 +27,12 @@ class Ship:
         self.length_m = length_m
         self.width_m = width_m
 
+        # Tracking heading adjustments within a time step
+        self.heading_adjusted = 0.0
+
+    def reset_heading_adjusted(self):
+        self.heading_adjusted = 0.0
+
     def update_position(self, dt_hours):
         distance_nm = self.speed * dt_hours
         rad = math.radians(self.heading)
@@ -121,7 +127,8 @@ def is_on_starboard_side(shipA, shipB):
 # 3. Simulator
 #############################################################################
 class Simulator:
-    def __init__(self, ships, time_step=30.0, safe_distance=0.2, heading_search_range=40, heading_search_step=1.0):
+    def __init__(self, ships, time_step=30.0, safe_distance=0.2,
+                 heading_search_range=40, heading_search_step=1.0):
         """
         Args:
             ships (list of Ship)
@@ -142,51 +149,137 @@ class Simulator:
     def step(self):
         """
         Advance the simulation by self.time_step seconds.
-        - Compute baseline heading to destination.
-        - Detect collisions, sort by ascending CPA.
-        - Apply starboard maneuvers for collisions.
-        - Update positions.
+        We'll do multiple iterations of collision resolution before
+        finally moving the ships.
         """
         dt_hours = self.time_step / 3600.0
 
-        # 1) Set heading to dest by default
+        # Reset heading adjustments for all ships at the start of the step
+        for sh in self.ships:
+            sh.reset_heading_adjusted()
+
+        # 1) Baseline heading: each ship aims at destination
         for sh in self.ships:
             if sh.distance_to_destination() > self.destination_threshold:
                 sh.heading = sh.compute_heading_to_destination()
 
-        # 2) Collisions
-        collisions = self.detect_collisions()
-        collisions.sort(key=lambda x: x[0])  # sort by dist_cpa ascending
+        # 2) Multi-step collision resolution
+        max_iterations = 5  # or more if you prefer
+        for _ in range(max_iterations):
+            collisions = self.detect_collisions()
+            if not collisions:
+                # No collisions -> done
+                break
+            collisions.sort(key=lambda x: x[0])  # sort by ascending cpa
 
-        # 3) Resolve collisions
-        for (dist_cpa, i, j) in collisions:
-            shipA = self.ships[i]
-            shipB = self.ships[j]
-            encounter = classify_encounter(shipA, shipB)
+            improved_any = False
+            for (dist_cpa, i, j) in collisions:
+                if dist_cpa >= self.safe_distance:
+                    continue  # this collision is no longer relevant
+                shipA = self.ships[i]
+                shipB = self.ships[j]
+                encounter = classify_encounter(shipA, shipB)
 
-            if encounter == 'head-on':
-                # both yield
-                self.starboard_cpa_search(shipA, shipB)
-                self.starboard_cpa_search(shipB, shipA)
-            elif encounter == 'crossing':
-                # who yields?
-                if is_on_starboard_side(shipA, shipB):
-                    self.starboard_cpa_search(shipA, shipB)
-                elif is_on_starboard_side(shipB, shipA):
-                    self.starboard_cpa_search(shipB, shipA)
-            else:  # overtaking
-                bearingAB = relative_bearing_degs(shipA, shipB)
-                if 110 < abs(bearingAB) < 250:
-                    self.starboard_cpa_search(shipB, shipA)
-                else:
-                    self.starboard_cpa_search(shipA, shipB)
+                # determine who is give-way
+                # in head-on, both yield
+                if encounter == 'head-on':
+                    # both do multi-ship starboard
+                    improvedA = self.apply_multi_ship_starboard(shipA)
+                    improvedB = self.apply_multi_ship_starboard(shipB)
+                    if improvedA or improvedB:
+                        improved_any = True
+                elif encounter == 'crossing':
+                    if is_on_starboard_side(shipA, shipB):
+                        # A is give-way
+                        if self.apply_multi_ship_starboard(shipA):
+                            improved_any = True
+                    elif is_on_starboard_side(shipB, shipA):
+                        # B is give-way
+                        if self.apply_multi_ship_starboard(shipB):
+                            improved_any = True
+                    else:
+                        # default to letting A yield
+                        if self.apply_multi_ship_starboard(shipA):
+                            improved_any = True
+                else:  # overtaking
+                    bearingAB = abs(relative_bearing_degs(shipA, shipB))
+                    if 110 < bearingAB < 250:
+                        # B behind A => B yields
+                        if self.apply_multi_ship_starboard(shipB):
+                            improved_any = True
+                    else:
+                        # default to A yields
+                        if self.apply_multi_ship_starboard(shipA):
+                            improved_any = True
 
-        # 4) Update positions
+            if not improved_any:
+                # No improvements in this iteration, avoid infinite loop
+                break
+
+        # 3) Now update positions
         for sh in self.ships:
             if sh.distance_to_destination() > self.destination_threshold:
                 sh.update_position(dt_hours)
 
         self.current_time += self.time_step
+
+    def apply_multi_ship_starboard(self, give_ship):
+        """
+        Attempt a multi-ship starboard turn for 'give_ship' up to self.heading_search_range,
+        searching in self.heading_search_step increments.
+        We pick the heading that yields the largest minimum CPA to all other ships,
+        but do not exceed the total heading_range.
+        
+        Returns True if a heading change was made, False if not.
+        """
+        current_heading = give_ship.heading
+        max_total_adjust = self.heading_search_range - give_ship.heading_adjusted
+        if max_total_adjust <= 0:
+            return False  # No adjustment left
+
+        # We can only adjust up to the remaining allowed heading range
+        # So the max offset we can apply in this call is min(heading_search_range, max_total_adjust)
+        # Considering heading_step increments
+        max_offset = min(self.heading_search_range, max_total_adjust)
+        # Adjust in heading_search_step increments
+        possible_offsets = np.arange(self.heading_search_step, max_offset + 1, self.heading_search_step)
+
+        best_heading = current_heading
+        best_min_cpa = self.compute_min_cpa_over_others(give_ship, current_heading)
+
+        for offset in possible_offsets:
+            test_heading = current_heading - offset
+            cpa_test = self.compute_min_cpa_over_others(give_ship, test_heading)
+            if cpa_test > best_min_cpa:
+                best_min_cpa = cpa_test
+                best_heading = test_heading
+                # Record the heading adjustment
+                give_ship.heading_adjusted += offset
+                improved = True
+                if best_min_cpa >= self.safe_distance:
+                    # Good enough => we can stop searching
+                    break
+
+        if best_heading != current_heading:
+            give_ship.heading = best_heading
+            return True
+        return False
+
+    def compute_min_cpa_over_others(self, give_ship, test_heading):
+        """
+        Temporarily set 'give_ship.heading' to 'test_heading' and compute
+        the minimum CPA to *all* other ships. Then revert.
+        """
+        old_heading = give_ship.heading
+        give_ship.heading = test_heading
+        min_cpa = float('inf')
+        for s in self.ships:
+            if s is not give_ship:
+                cpa = compute_cpa_distance(give_ship, s)
+                if cpa < min_cpa:
+                    min_cpa = cpa
+        give_ship.heading = old_heading
+        return min_cpa
 
     def detect_collisions(self):
         """
@@ -201,35 +294,9 @@ class Simulator:
                     pairs.append((cpa, i, j))
         return pairs
 
-    def starboard_cpa_search(self, give_ship, other_ship):
-        """
-        Minimal starboard turn up to heading_search_range in heading_search_step increments
-        to maintain safe_distance.
-        """
-        current = give_ship.heading
-        best_heading = current
-        best_cpa = compute_cpa_distance(give_ship, other_ship)
-        if best_cpa >= self.safe_distance:
-            return
-
-        import numpy as np
-        for offset in np.arange(1, self.heading_search_range+1, self.heading_search_step):
-            test = current - offset
-            old = give_ship.heading
-            give_ship.heading = test
-            cpa_test = compute_cpa_distance(give_ship, other_ship)
-            give_ship.heading = old
-
-            if cpa_test > best_cpa:
-                best_cpa = cpa_test
-                best_heading = test
-            if best_cpa >= self.safe_distance:
-                break
-
-        give_ship.heading = best_heading
-
     def all_ships_arrived(self):
-        return all(s.distance_to_destination() < self.destination_threshold for s in self.ships)
+        return all(s.distance_to_destination() < self.destination_threshold
+                   for s in self.ships)
 
     def get_collisions_with_roles(self):
         """
@@ -241,7 +308,6 @@ class Simulator:
         """
         results = []
         collisions = self.detect_collisions()
-        # sort by ascending cpa
         collisions.sort(key=lambda x: x[0])
 
         for (cpa, i, j) in collisions:
@@ -265,12 +331,10 @@ class Simulator:
             elif is_on_starboard_side(shipB, shipA):
                 return ("Stand-On", "Give-Way")
             else:
-                # ambiguous => default to (A=Give-Way, B=Stand-On)
                 return ("Give-Way", "Stand-On")
         else:  # overtaking
             bearingAB = abs(relative_bearing_degs(shipA, shipB))
             if 110 < bearingAB < 250:
-                # B behind A => B is give-way
                 return ("Stand-On", "Give-Way")
             else:
                 return ("Give-Way", "Stand-On")
