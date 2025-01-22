@@ -11,17 +11,17 @@ class Ship:
         self.name = name
         self.x = x
         self.y = y
-        self.heading = heading  # in degrees
-        self.speed = speed      # in knots
+        self.heading = heading  # degrees
+        self.speed = speed      # knots
         self.dest_x = dest_x
         self.dest_y = dest_y
-
-        # Optionally store length/width if needed
+        
+        # Optionally store physical dimensions (not used directly yet)
         self.length_m = 100.0
         self.width_m = 20.0
 
     def update_position(self, dt_hours):
-        distance = self.speed * dt_hours  # NM traveled = knots * hours
+        distance = self.speed * dt_hours  # NM traveled
         heading_rad = math.radians(self.heading)
         self.x += distance * math.cos(heading_rad)
         self.y += distance * math.sin(heading_rad)
@@ -41,23 +41,26 @@ class Ship:
         return np.array([self.x, self.y])
 
     def get_velocity_vector(self):
+        """Velocity in NM/hour (knots are NM/hr)."""
         vx = self.speed * math.cos(math.radians(self.heading))
         vy = self.speed * math.sin(math.radians(self.heading))
         return np.array([vx, vy])
 
+
 # =====================================================
-# 2. Collision Risk / CPA
+# 2. Collision / CPA Utilities
 # =====================================================
 def compute_cpa_distance(shipA, shipB):
+    """Returns the distance at the closest point of approach."""
     pA = shipA.get_position_vector()
     pB = shipB.get_position_vector()
-    r0 = pB - pA  # relative position (B w.r.t A)
+    r0 = pB - pA  # relative position
     vA = shipA.get_velocity_vector()
     vB = shipB.get_velocity_vector()
     v = vB - vA   # relative velocity
 
     if np.allclose(v, 0):
-        # same velocity => distance is constant
+        # Same velocity => distance is constant
         return np.linalg.norm(r0)
 
     t_cpa = -np.dot(r0, v) / np.dot(v, v)
@@ -67,18 +70,35 @@ def compute_cpa_distance(shipA, shipB):
     dist_cpa = np.linalg.norm(r_cpa)
     return dist_cpa
 
+
+def compute_cpa_with_assumed_heading(give_ship, other_ship, heading):
+    """
+    Computes the CPA if 'give_ship' uses 'heading' (degrees) 
+    and 'other_ship' keeps its current heading.
+    Speed is unchanged.
+    """
+    # Temporarily store old heading
+    old_heading = give_ship.heading
+    
+    try:
+        # Set new heading
+        give_ship.heading = heading
+        dist_cpa = compute_cpa_distance(give_ship, other_ship)
+    finally:
+        # Revert heading to old
+        give_ship.heading = old_heading
+    
+    return dist_cpa
+
+
 def relative_bearing_degs(from_ship, to_ship):
     """
-    Returns the relative bearing from `from_ship` to `to_ship` in degrees.
-    0 deg = dead ahead, +90 deg = on from_ship's port beam, -90 deg = starboard beam, etc.
-    We'll normalize to (-180, 180).
+    Returns relative bearing from 'from_ship' to 'to_ship' in (-180, 180).
+    0 deg = dead ahead, > 0 = to port side, < 0 = to starboard side.
     """
-    # Vector from A->B
     dx = to_ship.x - from_ship.x
     dy = to_ship.y - from_ship.y
-    # Absolute angle of that vector (relative to East)
     angle_abs = math.degrees(math.atan2(dy, dx))
-    # Relative angle to from_ship's heading
     rel = angle_abs - from_ship.heading
     # Normalize to (-180, 180)
     while rel > 180:
@@ -87,127 +107,101 @@ def relative_bearing_degs(from_ship, to_ship):
         rel += 360
     return rel
 
+
 # =====================================================
 # 3. COLREG Classification
 # =====================================================
 def classify_encounter(shipA, shipB):
-    """
-    Classify the encounter type: 'head-on', 'crossing', 'overtaking', or 'unknown'
-    We'll do a simple approach using relative bearings in each direction.
-    """
-    # Relative bearings A->B, B->A
+    """Returns 'head-on', 'crossing', 'overtaking', or 'unknown'."""
     bearingAB = relative_bearing_degs(shipA, shipB)
     bearingBA = relative_bearing_degs(shipB, shipA)
 
-    # HEAD-ON: each sees the other roughly ahead
-    # For simplicity, we'll call it head-on if bearingAB ~ 0 deg, bearingBA ~ 0 deg (±10 deg).
+    # HEAD-ON if both bearings are near 0 deg
     if abs(bearingAB) < 10 and abs(bearingBA) < 10:
         return 'head-on'
 
-    # OVERTAKING: B is behind A if bearingAB ~ 180 deg. 
-    # We'll consider an overtaking if bearingAB is in ±70 deg of 180
-    # i.e. if bearingAB in (110, 250) => B is behind A.
-    # But we also check from B's perspective just to confirm.
+    # OVERTAKING if one sees the other near ±180 deg (110 < abs(bearing) < 250).
     if 110 < abs(bearingAB) < 250:
-        return 'overtaking'  # B behind A => from A's perspective
+        return 'overtaking'
     if 110 < abs(bearingBA) < 250:
-        return 'overtaking'  # A behind B => from B's perspective
+        return 'overtaking'
 
-    # Otherwise, assume CROSSING if bearings are not near 180 or 0.
+    # Otherwise CROSSING
     return 'crossing'
 
+
 def is_on_starboard_side(shipA, shipB):
-    """
-    Returns True if shipB is on the starboard side of shipA.
-    We can say starboard side is relative bearing in (-112.5, 0).
-    """
+    """True if B is on the starboard side of A."""
     bearingAB = relative_bearing_degs(shipA, shipB)
-    # Starboard side if bearingAB is negative (and within some range)
+    # Starboard side => negative bearing in (-112.5, 0)
     if -112.5 < bearingAB < 0:
         return True
     return False
 
-def is_on_port_side(shipA, shipB):
-    """
-    Returns True if shipB is on the port side of shipA (bearingAB in (0, 112.5)).
-    """
-    bearingAB = relative_bearing_degs(shipA, shipB)
-    if 0 < bearingAB < 112.5:
-        return True
-    return False
 
 # =====================================================
-# 4. Simulator with COLREG Avoidance
+# 4. Simulator with "Realistic" Heading Changes + Danger Prioritization
 # =====================================================
 class Simulator:
     def __init__(self, ships, time_step=30.0):
         self.ships = ships
-        self.time_step = time_step
+        self.time_step = time_step  # seconds
         self.current_time = 0.0
-        self.destination_threshold = 0.05
-        self.safe_distance = 0.2  # NM
 
-        # A fixed "starboard turn" angle we apply if we must yield
-        self.starboard_turn_angle = 15.0
+        # Distances in NM
+        self.destination_threshold = 0.05
+        self.safe_distance = 0.3     # Desired min CPA
+        self.heading_search_range = 40  # max starboard turn in degrees we search
+        self.heading_search_step = 1.0  # 1-degree increments
 
     def step(self):
-        """
-        1) Detect pairs with collision risk
-        2) Classify encounter type
-        3) Apply appropriate COLREG rule
-        4) Update positions
-        """
         dt_hours = self.time_step / 3600.0
 
-        # First, set headings to destination if no conflict
-        # We'll apply potential avoidance overrides below
+        # 1) Assign each ship's heading to point to destination
         for ship in self.ships:
             if ship.distance_to_destination() > self.destination_threshold:
-                # direct heading to waypoint (baseline)
-                desired_heading = ship.compute_heading_to_destination()
-                ship.heading = desired_heading
+                ship.heading = ship.compute_heading_to_destination()
 
-        # Detect collisions, group them for resolution
+        # 2) Detect collisions + sort by ascending CPA => "prioritize danger"
         collision_pairs = self.detect_collision_risk()
+        # Each item is (dist_cpa, i, j); sort by dist_cpa
+        collision_pairs.sort(key=lambda x: x[0])
 
-        # For each pair, apply COLREG
-        for (i, j) in collision_pairs:
+        # 3) For each pair in ascending CPA order, apply COLREG
+        for (dist_cpa, i, j) in collision_pairs:
             shipA = self.ships[i]
             shipB = self.ships[j]
             encounter_type = classify_encounter(shipA, shipB)
 
             if encounter_type == 'head-on':
-                # Both turn starboard
-                shipA.heading -= self.starboard_turn_angle
-                shipB.heading -= self.starboard_turn_angle
+                # Both are give-way. Let's do starboard turns.
+                self.apply_starboard_cpa_maneuver(shipA, shipB)
 
             elif encounter_type == 'crossing':
-                # If B is on starboard of A => A is give-way (and must turn starboard).
+                # Determine which is give-way: the one who sees the other on starboard side
+                # If B is on starboard of A => A yields
                 if is_on_starboard_side(shipA, shipB):
                     # A yields
-                    shipA.heading -= self.starboard_turn_angle
+                    self.apply_single_ship_cpa_maneuver(shipA, shipB)
                 elif is_on_starboard_side(shipB, shipA):
                     # B yields
-                    shipB.heading -= self.starboard_turn_angle
+                    self.apply_single_ship_cpa_maneuver(shipB, shipA)
                 else:
-                    # If we can't decide clearly, A might yield
-                    shipA.heading -= self.starboard_turn_angle
+                    # If uncertain, pick one to yield (A):
+                    self.apply_single_ship_cpa_maneuver(shipA, shipB)
 
             elif encounter_type == 'overtaking':
-                # The overtaking ship yields.
-                # We'll guess who is behind by checking relative bearings.
+                # The one behind is give-way
                 bearingAB = relative_bearing_degs(shipA, shipB)
+                # If B is behind A => B yields
                 if 110 < abs(bearingAB) < 250:
-                    # B is behind A => B is overtaking A => B yields
-                    shipB.heading += self.starboard_turn_angle
+                    self.apply_single_ship_cpa_maneuver(shipB, shipA)
                 else:
-                    # A is overtaking B => A yields
-                    shipA.heading += self.starboard_turn_angle
-            else:
-                # unknown or no classification => do nothing
-                pass
+                    self.apply_single_ship_cpa_maneuver(shipA, shipB)
+            
+            # else 'unknown': do nothing
 
-        # Now update positions with final headings
+        # 4) Update positions
         for ship in self.ships:
             if ship.distance_to_destination() > self.destination_threshold:
                 ship.update_position(dt_hours)
@@ -216,8 +210,8 @@ class Simulator:
 
     def detect_collision_risk(self):
         """
-        Returns list of index pairs (i, j) where i < j
-        if cpa distance < safe_distance
+        Returns a list of tuples (dist_cpa, i, j)
+        for all pairs that have cpa < safe_distance.
         """
         n = len(self.ships)
         risk_pairs = []
@@ -225,8 +219,50 @@ class Simulator:
             for j in range(i+1, n):
                 dist_cpa = compute_cpa_distance(self.ships[i], self.ships[j])
                 if dist_cpa < self.safe_distance:
-                    risk_pairs.append((i, j))
+                    risk_pairs.append((dist_cpa, i, j))
         return risk_pairs
+
+    def apply_starboard_cpa_maneuver(self, shipA, shipB):
+        """
+        In a head-on scenario, both are give-way. 
+        We'll do a starboard maneuver on both.
+        For each, do a 'CPA-based search' for starboard headings 
+        that achieve min CPA with the other ship.
+        """
+        self.apply_single_ship_cpa_maneuver(shipA, shipB)
+        self.apply_single_ship_cpa_maneuver(shipB, shipA)
+
+    def apply_single_ship_cpa_maneuver(self, give_ship, other_ship):
+        """
+        For the 'give_ship', we search headings from 'current heading' 
+        *starboard* up to heading_search_range degrees, 
+        picking the minimal turn that yields a CPA >= safe_distance with 'other_ship'.
+        """
+        current_heading = give_ship.heading
+        # Start from 0° of starboard turn, up to heading_search_range
+        best_heading = current_heading
+        best_cpa = compute_cpa_with_assumed_heading(give_ship, other_ship, current_heading)
+
+        if best_cpa >= self.safe_distance:
+            # Already safe; no turn needed
+            return
+
+        # We'll search starboard headings from (current_heading to current_heading - heading_search_range)
+        # in increments of heading_search_step
+        heading_found = False
+        for angle_offset in np.arange(self.heading_search_step, self.heading_search_range + 0.1, self.heading_search_step):
+            test_heading = current_heading - angle_offset
+            cpa_test = compute_cpa_with_assumed_heading(give_ship, other_ship, test_heading)
+            if cpa_test > best_cpa:
+                best_cpa = cpa_test
+                best_heading = test_heading
+
+            if cpa_test >= self.safe_distance:
+                heading_found = True
+                break
+        
+        # Set the final heading
+        give_ship.heading = best_heading
 
     def all_ships_arrived(self):
         return all(ship.distance_to_destination() < self.destination_threshold
@@ -238,13 +274,15 @@ class Simulator:
 # =====================================================
 def run_simulation():
     # Example: 2 ships meeting head-on
-    shipA = Ship("Ship A", 2.5, 0.0, 45.0, 20.0, 2.5, 5.0)
-    shipB = Ship("Ship B", 0, 2.5, 225.0, 20.0, 5, 2.5)
+    # If no changes, they will pass dangerously close.
+    # shipA = Ship("Ship A", 2.5, 0.0, 45.0, 30.0, 2.5, 5.0)
+    # shipB = Ship("Ship B", 2.5, 0.5, 225.0, 20.0, 2.5, 5.0)
+    shipA = Ship("Ship A", 0.0, 0.0, 45.0, 20.0, 5.0, 5.0)
+    shipB = Ship("Ship B", 5.0, 5.0, 225.0, 20.0, 0.0, 0.0)
     ships = [shipA, shipB]
 
     sim = Simulator(ships, time_step=30.0)
 
-    # Matplotlib stuff
     fig, ax = plt.subplots()
     ax.set_aspect('equal')
     ax.set_xlim(-1, 6)
@@ -255,10 +293,11 @@ def run_simulation():
         scatter, = ax.plot([], [], 'o', label=ship.name)
         scatters.append(scatter)
 
+    # plot destinations
     for ship in ships:
-        ax.plot(ship.dest_x, ship.dest_y, 'r*')  # mark destinations
+        ax.plot(ship.dest_x, ship.dest_y, 'r*')
 
-    ax.legend()
+    # ax.legend()
 
     def init():
         for scatter in scatters:
@@ -266,10 +305,9 @@ def run_simulation():
         return scatters
 
     def update(frame):
-        # Step simulation
         sim.step()
 
-        # Move scatter
+        # Update scatter positions
         for i, ship in enumerate(sim.ships):
             scatters[i].set_data([ship.x], [ship.y])
 
@@ -281,7 +319,7 @@ def run_simulation():
 
     anim = FuncAnimation(fig, update, init_func=init,
                          frames=200, interval=500, blit=True)
-    plt.title("Step 3: Simple COLREG Collision Avoidance")
+    plt.title("seaSafe")
     plt.show()
 
 
