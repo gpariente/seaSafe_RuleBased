@@ -50,42 +50,46 @@ class TextBox:
 #############################################################################
 # 2. Drawing Functions: Ship Rectangle + Role Label
 #############################################################################
-def draw_ship(screen, ship, nm_to_px):
+def draw_ship(screen, ship, nm_to_px, screen_height):
     """
-    Draw the ship as a rotated rectangle, based on heading and size.
-    Ship dimensions in meters => convert to NM => then to pixels.
+    Convert (ship.x, ship.y) from the standard (bottom-left) system 
+    to Pygame's top-left system by flipping the y-coordinate.
+    Then rotate the rectangle so that a starboard turn visually appears 
+    as a turn to the right on screen.
     """
     import math, pygame
 
-    # Convert ship length/width from meters to NM
+    # 1) Convert from meters to NM
     length_nm = ship.length_m / 1852.0
     width_nm  = ship.width_m  / 1852.0
 
-    # Convert NM to px
+    # 2) Convert NM to pixels
     length_px = length_nm * nm_to_px
     width_px  = width_nm  * nm_to_px
 
-    # Center position in px
-    cx = ship.x * nm_to_px
-    cy = ship.y * nm_to_px
+    # 3) Convert the ship's (x,y) from your "math" system to Pygame's
+    #    Y is flipped: top-left in Pygame = bottom-left in your logic
+    #    so we do y_screen = screen_height - (ship.y * nm_to_px)
+    x_screen = ship.x * nm_to_px
+    y_screen = screen_height - (ship.y * nm_to_px)
 
-    # Create a small surface for the ship rectangle
-    surf_w = max(1, int(width_px))
-    surf_l = max(1, int(length_px))
-    ship_surf = pygame.Surface((surf_l, surf_w), pygame.SRCALPHA)
+    # 4) Create the rectangle surface
+    surf_width = max(1, int(width_px))
+    surf_length = max(1, int(length_px))
+    ship_surf = pygame.Surface((surf_length, surf_width), pygame.SRCALPHA)
+    ship_surf.fill((255,255,255))  # White ship
 
-    # Fill it white
-    ship_surf.fill((255, 255, 255))
+    # 5) Pygame rotates surfaces clockwise for positive angles,
+    #    but your heading is probably 0°=East, increasing CCW => 
+    #    We typically do angle_for_pygame = -ship.heading
+    angle_for_pygame = ship.heading
 
-    # PyGame rotation is clockwise for positive angles;
-    # Our headings increase counterclockwise => rotate by -ship.heading
-    angle_for_pygame = -ship.heading
+    rotated_surf = pygame.transform.rotate(ship_surf, angle_for_pygame)
+    rect = rotated_surf.get_rect()
+    rect.center = (x_screen, y_screen)
 
-    rotated = pygame.transform.rotate(ship_surf, angle_for_pygame)
-    rect = rotated.get_rect()
-    rect.center = (cx, cy)
+    screen.blit(rotated_surf, rect)
 
-    screen.blit(rotated, rect)
 
 
 def draw_ship_role(screen, ship, role_text, nm_to_px, font):
@@ -228,7 +232,8 @@ def main():
         # 3) Draw the new state
         sim_screen.fill((130, 180, 255))  # lighter blue background
         for s in ships:
-            draw_ship(sim_screen, s, nm_to_px)
+            screen_height = 800
+            draw_ship(sim_screen, s, nm_to_px, screen_height)
             draw_ship_role(sim_screen, s, ship_roles[s.name], nm_to_px, font)
 
         pygame.display.flip()
