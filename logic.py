@@ -230,3 +230,47 @@ class Simulator:
 
     def all_ships_arrived(self):
         return all(s.distance_to_destination() < self.destination_threshold for s in self.ships)
+
+    def get_collisions_with_roles(self):
+        """
+        Returns a list of (dist_cpa, i, j, encounter, role_i, role_j)
+        for all pairs that have CPA < safe_distance, sorted by dist_cpa ascending.
+
+        'role_i' and 'role_j' will be "Give-Way", "Stand-On", or "" (if no collision).
+        In a head-on scenario, both might be "Give-Way".
+        """
+        results = []
+        collisions = self.detect_collisions()
+        # sort by ascending cpa
+        collisions.sort(key=lambda x: x[0])
+
+        for (cpa, i, j) in collisions:
+            shipA = self.ships[i]
+            shipB = self.ships[j]
+            encounter = classify_encounter(shipA, shipB)
+            roleA, roleB = self.assign_roles(shipA, shipB, encounter)
+            results.append((cpa, i, j, encounter, roleA, roleB))
+
+        return results
+
+    def assign_roles(self, shipA, shipB, encounter_type):
+        """
+        Return (roleA, roleB) as strings: 'Give-Way', 'Stand-On', or ''
+        """
+        if encounter_type == 'head-on':
+            return ("Give-Way", "Give-Way")
+        elif encounter_type == 'crossing':
+            if is_on_starboard_side(shipA, shipB):
+                return ("Give-Way", "Stand-On")
+            elif is_on_starboard_side(shipB, shipA):
+                return ("Stand-On", "Give-Way")
+            else:
+                # ambiguous => default to (A=Give-Way, B=Stand-On)
+                return ("Give-Way", "Stand-On")
+        else:  # overtaking
+            bearingAB = abs(relative_bearing_degs(shipA, shipB))
+            if 110 < bearingAB < 250:
+                # B behind A => B is give-way
+                return ("Stand-On", "Give-Way")
+            else:
+                return ("Give-Way", "Stand-On")
