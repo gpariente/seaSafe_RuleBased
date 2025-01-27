@@ -95,8 +95,8 @@ def draw_scrolling_bg(screen, bg_img, scroll_x, scroll_speed, dt):
 
     # draw the background twice in a row
     # so we get a continuous wrap-around effect
-    screen.blit(bg_img, ( -scroll_x, 0))
-    screen.blit(bg_img, ( -scroll_x + w, 0))
+    screen.blit(bg_img, (-scroll_x, 0))
+    screen.blit(bg_img, (-scroll_x + w, 0))
 
     return scroll_x
 
@@ -120,41 +120,31 @@ def draw_ship_trail(screen, ship, nm_to_px, screen_height):
         sy2 = screen_height - (y2 * nm_to_px)
         pygame.draw.line(screen, color, (sx1, sy1), (sx2, sy2), 2)
 
-def draw_ship_sprite(screen, ship, sprite_image, nm_to_px, screen_height):
+def draw_ship_rect(screen, ship, nm_to_px, screen_height):
     """
-    Draw the ship using a sprite image (ship_sprite2.png). We scale the sprite
-    to match the bounding box (length_px, width_px), but apply a scale factor
-    so it doesn't look too small.
-
-    Then rotate it by ship.heading and center-blit.
+    Draw the ship as a rotated rectangle in the ship's color,
+    matching the physical size (length_m, width_m).
     """
-    # Convert ship physical size in meters -> NM
     length_nm = ship.length_m / 1852.0
-    width_nm = ship.width_m / 1852.0
+    width_nm  = ship.width_m  / 1852.0
     length_px = length_nm * nm_to_px
-    width_px = width_nm * nm_to_px
-
-    # Optionally apply a scale factor to keep the sprite larger
-    scale_factor = 1.6  # tweak to taste
-    length_px *= scale_factor
-    width_px *= scale_factor
+    width_px  = width_nm  * nm_to_px
 
     x_screen = ship.x * nm_to_px
     y_screen = screen_height - (ship.y * nm_to_px)
 
-    # Make sure we clamp to at least 1 pixel
-    ship_w = max(1, int(length_px))
-    ship_h = max(1, int(width_px))
+    surf_l = max(1, int(length_px))
+    surf_w = max(1, int(width_px))
+    ship_surf = pygame.Surface((surf_l, surf_w), pygame.SRCALPHA)
 
-    # Scale the sprite
-    scaled_surf = pygame.transform.scale(sprite_image, (ship_w, ship_h))
+    # fill with ship color
+    ship_surf.fill(ship.color)
 
-    # Rotate by heading
+    # rotate
     angle_for_pygame = ship.heading
-    rotated = pygame.transform.rotate(scaled_surf, angle_for_pygame)
+    rotated = pygame.transform.rotate(ship_surf, angle_for_pygame)
     rect = rotated.get_rect()
     rect.center = (x_screen, y_screen)
-
     screen.blit(rotated, rect)
 
 ###############################################################################
@@ -181,20 +171,13 @@ def main():
         logo_img = pygame.Surface((200, 100), pygame.SRCALPHA)
         pygame.draw.rect(logo_img, (255, 255, 255, 180), logo_img.get_rect())
 
-    # ---- Increase the logo size and center it
-    scale_factor = 2  # Adjust this factor as needed
+    # Scale the logo bigger
+    scale_factor = 2  # Adjust if you like
     new_logo_width = int(logo_img.get_width() * scale_factor)
     new_logo_height = int(logo_img.get_height() * scale_factor)
     logo_img = pygame.transform.scale(logo_img, (new_logo_width, new_logo_height))
     logo_x = (screen_width - new_logo_width) // 2
-    logo_y = 50  # You can adjust the y-position if needed
-
-    # For simulator: load ship sprite
-    try:
-        ship_sprite_img = pygame.image.load("ship_sprite2.png").convert_alpha()
-    except:
-        ship_sprite_img = pygame.Surface((50, 20), pygame.SRCALPHA)
-        pygame.draw.rect(ship_sprite_img, (255, 255, 255, 180), ship_sprite_img.get_rect())
+    logo_y = 30
 
     # We'll use a horizontal offset for the background
     sea_scroll_x = 0.0
@@ -265,11 +248,11 @@ def main():
         start_y = 150
         for i in range(num):
             row = []
-            row.append(TextBox((50, start_y, 80, 30), font, "20"))  # speed
-            row.append(TextBox((150, start_y, 100, 30), font, "0,0")) # start(x,y)
-            row.append(TextBox((270, start_y, 100, 30), font, "5,5")) # dest(x,y)
-            row.append(TextBox((390, start_y, 80, 30), font, "300"))  # length
-            row.append(TextBox((490, start_y, 80, 30), font, "50"))   # width
+            row.append(TextBox((50, start_y, 80, 30), font, "20"))   # speed
+            row.append(TextBox((150, start_y, 100, 30), font, "0,0"))# start(x,y)
+            row.append(TextBox((270, start_y, 100, 30), font, "5,5"))# dest(x,y)
+            row.append(TextBox((390, start_y, 80, 30), font, "300")) # length
+            row.append(TextBox((490, start_y, 80, 30), font, "50"))  # width
             new_list.append(row)
             start_y += 60
         return new_list
@@ -279,8 +262,8 @@ def main():
     while running:
         dt = clock.tick(30) / 1000.0  # seconds per frame
 
+        # For menu-like states, draw the scrolling background
         if current_state in (STATE_MAIN_MENU, STATE_AUTO_MODE, STATE_MANUAL_SCENARIO, STATE_MANUAL_SHIP_SETUP):
-            # Draw background on these states
             sea_scroll_x = draw_scrolling_bg(screen, sea_bg, sea_scroll_x, sea_scroll_speed, dt)
 
         if current_state == STATE_MAIN_MENU:
@@ -288,8 +271,8 @@ def main():
             screen.blit(logo_img, (logo_x, logo_y))
 
             btn_manual = pygame.Rect((screen_width - 200) // 2, 250, 200, 50)
-            btn_auto = pygame.Rect((screen_width - 200) // 2, 340, 200, 50)
-            btn_exit = pygame.Rect((screen_width - 200) // 2, 430, 200, 50)
+            btn_auto   = pygame.Rect((screen_width - 200) // 2, 340, 200, 50)
+            btn_exit   = pygame.Rect((screen_width - 200) // 2, 430, 200, 50)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -303,19 +286,19 @@ def main():
                         running = False
 
             draw_button(screen, btn_manual, "Manual Mode", font, color=(0, 100, 180))
-            draw_button(screen, btn_auto, "Automatic Mode", font, color=(0, 100, 180))
-            draw_button(screen, btn_exit, "Exit", font, color=(180, 0, 0))
+            draw_button(screen, btn_auto,   "Automatic Mode", font, color=(0, 100, 180))
+            draw_button(screen, btn_exit,   "Exit",           font, color=(0, 100, 180))
 
             pygame.display.flip()
 
         elif current_state == STATE_AUTO_MODE:
-            # Slight overlay so buttons are visible
+            # Dark overlay for contrast
             overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
 
-            btn_back = pygame.Rect(50, 500, 100, 40)
-            btn_load = pygame.Rect(300, 200, 200, 50)
+            btn_back  = pygame.Rect(50, 500, 100, 40)
+            btn_load  = pygame.Rect(300, 200, 200, 50)
             btn_start = pygame.Rect(300, 300, 200, 50)
 
             for event in pygame.event.get():
@@ -333,13 +316,12 @@ def main():
                         else:
                             print("No valid JSON or no ships loaded!")
 
-            draw_button(screen, btn_back, "Back", font)
-            draw_button(screen, btn_load, "Load JSON", font)
+            draw_button(screen, btn_back,  "Back", font)
+            draw_button(screen, btn_load,  "Load JSON", font)
             draw_button(screen, btn_start, "Start", font)
             pygame.display.flip()
 
         elif current_state == STATE_MANUAL_SCENARIO:
-            # Overlay
             overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
@@ -354,13 +336,13 @@ def main():
                     if btn_back.collidepoint(event.pos):
                         current_state = STATE_MAIN_MENU
                     elif btn_next.collidepoint(event.pos):
-                        # parse
-                        scenario_data["map_size"] = box_map_size.get_float(6.0)
+                        # parse scenario params
+                        scenario_data["map_size"]      = box_map_size.get_float(6.0)
                         scenario_data["safe_distance"] = box_safe_dist.get_float(0.2)
                         scenario_data["heading_range"] = box_search_rng.get_float(40)
-                        scenario_data["heading_step"] = box_search_step.get_float(1)
-                        scenario_data["time_step"] = box_time_step.get_float(30)
-                        scenario_data["num_ships"] = box_num_ships.get_int(1)
+                        scenario_data["heading_step"]  = box_search_step.get_float(1)
+                        scenario_data["time_step"]     = box_time_step.get_float(30)
+                        scenario_data["num_ships"]     = box_num_ships.get_int(1)
 
                         ship_boxes = create_ship_boxes(scenario_data["num_ships"])
                         scenario_data["ship_boxes"] = ship_boxes
@@ -398,7 +380,6 @@ def main():
             pygame.display.flip()
 
         elif current_state == STATE_MANUAL_SHIP_SETUP:
-            # Switch to bigger window once only
             if not manual_setup_screen_set:
                 screen = pygame.display.set_mode((900, 700))
                 pygame.display.set_caption("Ship Setup")
@@ -406,7 +387,7 @@ def main():
 
             screen.fill((80, 80, 80))
 
-            btn_back = pygame.Rect(50, 600, 120, 40)
+            btn_back  = pygame.Rect(50, 600, 120, 40)
             btn_start = pygame.Rect(250, 600, 120, 40)
 
             local_ship_boxes = scenario_data.get("ship_boxes", [])
@@ -421,7 +402,6 @@ def main():
                         manual_setup_screen_set = False
                         current_state = STATE_MANUAL_SCENARIO
                     elif btn_start.collidepoint(event.pos):
-                        # parse => scenario_data["ships"]
                         scenario_data["ships"] = []
                         for i, row in enumerate(local_ship_boxes):
                             speedBox, startBox, destBox, lenBox, widBox = row
@@ -429,7 +409,7 @@ def main():
                             sx, sy = parse_xy(startBox.get_str())
                             dx_, dy_ = parse_xy(destBox.get_str())
                             length_ = lenBox.get_float(300)
-                            width_ = widBox.get_float(50)
+                            width_  = widBox.get_float(50)
 
                             heading = 0.0
                             dxval = dx_ - sx
@@ -470,25 +450,24 @@ def main():
                     tb.draw(screen)
                 y += 60
 
-            draw_button(screen, btn_back, "Back", font)
+            draw_button(screen, btn_back,  "Back",  font)
             draw_button(screen, btn_start, "Start", font)
             pygame.display.flip()
 
         elif current_state == STATE_SIMULATION:
-            # No background image here - just a plain fill
             if sim is None:
-                # Build the sim from scenario_data
+                # Build the simulator
                 loaded_ships = []
                 for i, sdata in enumerate(scenario_data["ships"]):
-                    sname = sdata.get("name", f"Ship{i+1}")
+                    sname   = sdata.get("name", f"Ship{i+1}")
                     heading = sdata.get("heading", 0.0)
-                    speed = sdata.get("speed", 20.0)
-                    sx = sdata.get("start_x", 0.0)
-                    sy = sdata.get("start_y", 0.0)
-                    dx_ = sdata.get("dest_x", 5.0)
-                    dy_ = sdata.get("dest_y", 5.0)
+                    speed   = sdata.get("speed", 20.0)
+                    sx      = sdata.get("start_x", 0.0)
+                    sy      = sdata.get("start_y", 0.0)
+                    dx_     = sdata.get("dest_x", 5.0)
+                    dy_     = sdata.get("dest_y", 5.0)
                     length_ = sdata.get("length_m", 300)
-                    width_ = sdata.get("width_m", 50)
+                    width_  = sdata.get("width_m", 50)
 
                     ship_obj = Ship(sname, sx, sy, heading, speed, dx_, dy_, length_, width_)
                     ship_obj.color = ship_colors[i % len(ship_colors)]
@@ -514,7 +493,7 @@ def main():
                 if event.type == pygame.QUIT:
                     running = False
 
-            # 1) get collisions + roles
+            # 1) collisions + roles
             collision_info = sim.get_collisions_with_roles()
             for sh in ships:
                 ship_roles[sh.name] = ""
@@ -528,7 +507,7 @@ def main():
             # 2) step the simulation
             sim.step(debug=False)
 
-            # 3) record new positions in the trail
+            # 3) record positions
             for sh in ships:
                 sh.trail.append((sh.x, sh.y))
 
@@ -537,10 +516,10 @@ def main():
 
             for s in ships:
                 draw_ship_trail(screen, s, nm_to_px, SIM_H)
-                draw_ship_sprite(screen, s, ship_sprite_img, nm_to_px, SIM_H)
+                draw_ship_rect(screen, s, nm_to_px, SIM_H)
 
             pygame.display.flip()
-            clock.tick(2)  # discrete steps
+            clock.tick(2)
 
             if sim.all_ships_arrived():
                 running = False

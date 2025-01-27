@@ -174,7 +174,6 @@ class Simulator:
         self.destination_threshold = 0.05  # NM
 
     def step(self, debug=False):
-        print("time_step in step is:",self.time_step)
         dt_hours = self.time_step / 3600.0
 
         # 1) Reset heading adjustments
@@ -265,7 +264,6 @@ class Simulator:
         for sh in self.ships:
             if sh.distance_to_destination() > self.destination_threshold:
                 sh.update_position(dt_hours)
-        print("time_step in the end of step=",self.time_step)
         self.current_time += self.time_step
         if debug:
             print(f"Completed step. Advanced time to {self.current_time} s.\n")
@@ -275,8 +273,6 @@ class Simulator:
             for sh in self.ships:
                 if sh.distance_to_destination() > self.destination_threshold:
                     sh.update_position(dt_hours)
-
-            # self.current_time += self.time_step
 
     def detect_collisions(self):
         """
