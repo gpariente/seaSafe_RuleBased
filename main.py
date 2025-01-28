@@ -6,6 +6,7 @@ import json
 import tkinter as tk
 import tkinter.filedialog as fd
 
+# Import collision logic from simulator.py, ship from ship.py
 from simulator import Simulator
 from ship import Ship
 
@@ -84,17 +85,10 @@ def parse_xy(s):
     return (0.0, 0.0)
 
 def draw_scrolling_bg(screen, bg_img, scroll_x, scroll_speed, dt):
-    """
-    Draw the background image scrolling left to right.
-    Returns the updated scroll_x.
-    """
     w = bg_img.get_width()
-    # move scroll_x to the right over time
     scroll_x += scroll_speed * dt
-    # wrap around using modulo
     scroll_x = scroll_x % w
 
-    # draw the background twice in a row for wrap-around
     screen.blit(bg_img, (-scroll_x, 0))
     screen.blit(bg_img, (-scroll_x + w, 0))
 
@@ -134,18 +128,10 @@ def draw_ship_rect(screen, ship, nm_to_px, screen_height):
     rect.center = (x_screen, y_screen)
     screen.blit(rotated, rect)
 
-
 def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, screen_height):
-    """
-    Draw a circular safety zone around the ship's center,
-    with radius = safe_distance_nm in NM => safe_distance_nm * nm_to_px in pixels.
-    We'll draw a red circle outline (width=2) for clarity.
-    """
     radius_px = int(safe_distance_nm * nm_to_px)
     center_x = int(ship.x * nm_to_px)
     center_y = int(screen_height - (ship.y * nm_to_px))
-
-    # Draw a red circle outline
     if radius_px > 0:
         pygame.draw.circle(screen, (255, 0, 0), (center_x, center_y), radius_px, 1)
 
@@ -156,8 +142,7 @@ def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, screen_height):
 def main():
     pygame.init()
 
-    # We will use 1000 width so we can have 800 for map + 200 for (unused) log panel
-    SIM_W, SIM_H = 1000, 800
+    # We'll start with 800x600 for the menu
     screen = pygame.display.set_mode((800, 600))
     pygame.display.set_caption("Collision Avoidance - Menu")
     clock = pygame.time.Clock()
@@ -176,7 +161,6 @@ def main():
         logo_img = pygame.Surface((200, 100), pygame.SRCALPHA)
         pygame.draw.rect(logo_img, (255, 255, 255, 180), logo_img.get_rect())
 
-    # Scale logo
     scale_factor = 2
     new_logo_width = int(logo_img.get_width() * scale_factor)
     new_logo_height = int(logo_img.get_height() * scale_factor)
@@ -204,8 +188,6 @@ def main():
     sim = None
     ships = []
     ship_roles = {}
-
-    # We'll scale the map to 800 px for the "map" portion
     nm_to_px = 100.0
 
     ship_colors = [
@@ -216,8 +198,10 @@ def main():
         (128, 0, 128)
     ]
 
-    # Pause variable
     paused = False
+
+    # NEW: We'll store a warning message for the Automatic Mode screen
+    warning_msg_auto = ""
 
     def load_scenario_from_json():
         root = tk.Tk()
@@ -236,11 +220,12 @@ def main():
                 scenario_data["ships"]         = data.get("ships", [])
                 return True
             except:
-                print("Error loading JSON.")
+                return False
         return False
 
     font_small = pygame.font.SysFont(None, 24)
 
+    # TextBoxes for manual scenario
     box_map_size    = TextBox((300, 100, 120, 30), font, "6")
     box_safe_dist   = TextBox((300, 150, 120, 30), font, "0.2")
     box_search_rng  = TextBox((300, 200, 120, 30), font, "40")
@@ -273,6 +258,7 @@ def main():
 
         if current_state == STATE_MAIN_MENU:
             screen.blit(logo_img, (logo_x, logo_y))
+
             btn_manual = pygame.Rect((800 - 200)//2, 250, 200, 50)
             btn_auto   = pygame.Rect((800 - 200)//2, 340, 200, 50)
             btn_exit   = pygame.Rect((800 - 200)//2, 430, 200, 50)
@@ -310,16 +296,33 @@ def main():
                         current_state = STATE_MAIN_MENU
                     elif btn_load.collidepoint(event.pos):
                         ok = load_scenario_from_json()
-                        automatic_loaded_ok = ok
+                        if not ok:
+                            warning_msg_auto = "Error: Invalid or non-JSON file!"
+                            automatic_loaded_ok = False
+                        else:
+                            # if loaded, check if ships exist
+                            if len(scenario_data["ships"]) == 0:
+                                warning_msg_auto = "No ships found in scenario!"
+                                automatic_loaded_ok = False
+                            else:
+                                warning_msg_auto = "JSON loaded successfully."
+                                automatic_loaded_ok = True
                     elif btn_start.collidepoint(event.pos):
                         if automatic_loaded_ok and len(scenario_data["ships"]) > 0:
                             current_state = STATE_SIMULATION
                         else:
-                            print("No valid JSON or no ships loaded!")
+                            warning_msg_auto = "No valid JSON or no ships loaded!"
 
+            # Draw buttons
             draw_button(screen, btn_back,  "Back",  font)
             draw_button(screen, btn_load,  "Load JSON", font)
             draw_button(screen, btn_start, "Start", font)
+
+            # Draw any warning msg in red
+            if warning_msg_auto:
+                msg_surf = font.render(warning_msg_auto, True, (255, 0, 0))
+                screen.blit(msg_surf, (200, 400))
+
             pygame.display.flip()
 
         elif current_state == STATE_MANUAL_SCENARIO:
@@ -503,7 +506,7 @@ def main():
                         paused = not paused
 
             if not paused:
-                sim.step(debug=True)
+                sim.step(debug=False)
                 for sh in ships:
                     sh.trail.append((sh.x, sh.y))
 
@@ -514,24 +517,21 @@ def main():
             # Draw each ship's trail, safety circle, and rectangle
             for s in ships:
                 draw_ship_trail(screen, s, nm_to_px, 800)
-
-                # NEW: draw the safety circle
-                draw_safety_circle(
-                    screen,
-                    s,
-                    sim.safe_distance,  # from scenario or sim
-                    nm_to_px,
-                    800
-                )
-
+                draw_safety_circle(screen, s, sim.safe_distance, nm_to_px, 800)
                 draw_ship_rect(screen, s, nm_to_px, 800)
 
-            # Show "PAUSED" if paused
+            # NEW: Display "Current Time Step" and "Press SPACE to Stop"
+            time_label = font.render(f"Current Time Step: {sim.current_time}s", True, (0, 0, 0))
+            screen.blit(time_label, (10, 10))
+
+            space_label = font.render("Press SPACE to Stop", True, (200, 0, 0))
+            screen.blit(space_label, (10, 30))
+
             if paused:
                 pause_overlay = pygame.Surface((800, 800), pygame.SRCALPHA)
                 screen.blit(pause_overlay, (0,0))
                 pause_text = font.render("PAUSED", True, (255, 0, 0))
-                screen.blit(pause_text, (10, 20))
+                screen.blit(pause_text, (10, 60))
 
             pygame.display.flip()
             clock.tick(2)
