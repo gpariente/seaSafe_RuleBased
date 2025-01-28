@@ -6,8 +6,8 @@ import json
 import tkinter as tk
 import tkinter.filedialog as fd
 
-# Import collision logic from logic.py
-from logic import Ship, Simulator
+from simulator import Simulator
+from ship import Ship
 
 ###############################################################################
 # 1) States
