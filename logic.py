@@ -19,13 +19,12 @@ class Ship:
         self.name = name
         self.x = x
         self.y = y
-        self.heading = heading
         self.speed = speed
         self.dest_x = dest_x
         self.dest_y = dest_y
-
         self.length_m = length_m
         self.width_m = width_m
+        self.heading = self.compute_heading_to_destination()
 
         # How many degrees we have turned starboard in the current time-step
         self.heading_adjusted = 0.0
@@ -169,9 +168,11 @@ class Simulator:
         self.safe_distance = safe_distance
         self.heading_search_range = heading_search_range
         self.heading_search_step = heading_search_step
-
+        self.ui_log = []
         self.current_time = 0.0
-        self.destination_threshold = 0.05  # NM
+        self.destination_threshold = 0.1  # NM
+        self.no_collision_count = 0  # how many consecutive steps collision-free
+
 
     def step(self, debug=False):
         dt_hours = self.time_step / 3600.0
@@ -179,13 +180,26 @@ class Simulator:
         # 1) Reset heading adjustments
         for sh in self.ships:
             sh.reset_heading_adjusted()
+            
+        # 1) DETECT collisions
+        collisions = self.detect_collisions()
 
-        # 2) Baseline heading => each ship aims at destination
-        for sh in self.ships:
-            if sh.distance_to_destination() > self.destination_threshold:
-                sh.heading = sh.compute_heading_to_destination()
+        if not collisions:
+            self.no_collision_count += 1
+        else:
+            self.no_collision_count = 0
 
-        max_iterations = 15
+        # 2) If collisions are gone for multiple steps, revert heading gradually
+        if self.no_collision_count > 5:
+            for sh in self.ships:
+                if sh.distance_to_destination() > self.destination_threshold:
+                    self.revert_heading_with_clamp(sh)
+
+            
+        # else if collisions remain or we haven't had enough collision-free steps,
+        # keep the heading from last step.
+
+        max_iterations = 100
         for iteration in range(max_iterations):
             collisions = self.detect_collisions()
             if not collisions:
@@ -203,7 +217,7 @@ class Simulator:
             improved_any = False
 
             for (dist_cpa, t_cpa, i, j) in collisions:
-                if dist_cpa >= self.safe_distance:
+                if dist_cpa >= 2.1 * self.safe_distance:
                     continue
                 shipA = self.ships[i]
                 shipB = self.ships[j]
@@ -217,7 +231,6 @@ class Simulator:
                     if impA or impB:
                         improved_any = True
                 elif encounter == 'crossing':
-                    # Who is give-way?
                     if is_on_starboard_side(shipA, shipB):
                         impA = self.apply_multi_ship_starboard(shipA, debug=debug)
                         if not impA:
@@ -269,11 +282,6 @@ class Simulator:
             print(f"Completed step. Advanced time to {self.current_time} s.\n")
 
 
-            # 4) Move ships forward
-            for sh in self.ships:
-                if sh.distance_to_destination() > self.destination_threshold:
-                    sh.update_position(dt_hours)
-
     def detect_collisions(self):
         """
         Return a list of (dist_cpa, t_cpa, i, j) for pairs with dist_cpa < safe_distance.
@@ -284,7 +292,7 @@ class Simulator:
         for i in range(n):
             for j in range(i+1, n):
                 dist_cpa, t_cpa = compute_cpa_and_tcpa(self.ships[i], self.ships[j])
-                if dist_cpa < self.safe_distance:
+                if dist_cpa < 2.1 * self.safe_distance:
                     pairs.append((dist_cpa, t_cpa, i, j))
         # sort by t_cpa, then dist_cpa
         pairs.sort(key=lambda x: (x[1], x[0]))
@@ -322,6 +330,7 @@ class Simulator:
             new_heading = base_heading - best_offset
             ship.heading = new_heading
             ship.heading_adjusted += best_offset
+            self.ui_log.append(f"{ship.name} turned starboard {best_offset:.1f} deg => new heading={new_heading:.1f}")
             if debug:
                 print(f"      {ship.name} turning starboard by {best_offset} deg => new heading={new_heading:.1f}, improved CPA from {current_cpa:.3f} to {best_cpa:.3f}")
             return True
@@ -349,7 +358,32 @@ class Simulator:
         # revert
         give_ship.heading = old_heading
         return min_cpa
+    
+    def revert_heading_with_clamp(self, ship):
+        """
+        Gradually revert 'ship.heading' toward 'compute_heading_to_destination()',
+        but do not exceed heading_search_range in one step.
+        """
+        current_hd = ship.heading
+        dest_hd = ship.compute_heading_to_destination()
 
+        # 1) Find minimal difference in [-180,180]
+        diff = dest_hd - current_hd
+        while diff > 180:
+            diff -= 360
+        while diff <= -180:
+            diff += 360
+
+        # 2) clamp difference to ± heading_search_range
+        max_turn = self.heading_search_range
+        if diff > max_turn:
+            diff = max_turn
+        elif diff < -max_turn:
+            diff = -max_turn
+
+        # 3) apply
+        new_hd = current_hd + diff
+        ship.heading = new_hd
     def all_ships_arrived(self):
         """
         True if all ships have reached (or are within threshold of) their destinations.
@@ -364,7 +398,7 @@ class Simulator:
         results = []
         collisions = self.detect_collisions()
         for (dist_cpa, t_cpa, i, j) in collisions:
-            if dist_cpa >= self.safe_distance:
+            if dist_cpa >= 2.1 * self.safe_distance:
                 continue
             shipA = self.ships[i]
             shipB = self.ships[j]

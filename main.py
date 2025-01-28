@@ -94,21 +94,13 @@ def draw_scrolling_bg(screen, bg_img, scroll_x, scroll_speed, dt):
     # wrap around using modulo
     scroll_x = scroll_x % w
 
-    # draw the background twice in a row
-    # so we get a continuous wrap-around effect
+    # draw the background twice in a row for wrap-around
     screen.blit(bg_img, (-scroll_x, 0))
     screen.blit(bg_img, (-scroll_x + w, 0))
 
     return scroll_x
 
-###############################################################################
-# 4) Drawing Ships + Breadcrumb Trails
-###############################################################################
 def draw_ship_trail(screen, ship, nm_to_px, screen_height):
-    """
-    Draw line segments for the ship's 'trail' of past positions,
-    in the ship's color.
-    """
     if len(ship.trail) < 2:
         return
     color = ship.color
@@ -122,10 +114,6 @@ def draw_ship_trail(screen, ship, nm_to_px, screen_height):
         pygame.draw.line(screen, color, (sx1, sy1), (sx2, sy2), 2)
 
 def draw_ship_rect(screen, ship, nm_to_px, screen_height):
-    """
-    Draw the ship as a rotated rectangle in the ship's color,
-    matching the physical size (length_m, width_m).
-    """
     length_nm = ship.length_m / 1852.0
     width_nm  = ship.width_m  / 1852.0
     length_px = length_nm * nm_to_px
@@ -138,28 +126,44 @@ def draw_ship_rect(screen, ship, nm_to_px, screen_height):
     surf_w = max(1, int(width_px))
     ship_surf = pygame.Surface((surf_l, surf_w), pygame.SRCALPHA)
 
-    # fill with ship color
     ship_surf.fill(ship.color)
 
-    # rotate
     angle_for_pygame = ship.heading
     rotated = pygame.transform.rotate(ship_surf, angle_for_pygame)
     rect = rotated.get_rect()
     rect.center = (x_screen, y_screen)
     screen.blit(rotated, rect)
 
+
+def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, screen_height):
+    """
+    Draw a circular safety zone around the ship's center,
+    with radius = safe_distance_nm in NM => safe_distance_nm * nm_to_px in pixels.
+    We'll draw a red circle outline (width=2) for clarity.
+    """
+    radius_px = int(safe_distance_nm * nm_to_px)
+    center_x = int(ship.x * nm_to_px)
+    center_y = int(screen_height - (ship.y * nm_to_px))
+
+    # Draw a red circle outline
+    if radius_px > 0:
+        pygame.draw.circle(screen, (255, 0, 0), (center_x, center_y), radius_px, 1)
+
+
 ###############################################################################
 # 5) Main Program
 ###############################################################################
 def main():
     pygame.init()
-    screen_width, screen_height = 800, 600
-    screen = pygame.display.set_mode((screen_width, screen_height))
+
+    # We will use 1000 width so we can have 800 for map + 200 for (unused) log panel
+    SIM_W, SIM_H = 1000, 800
+    screen = pygame.display.set_mode((800, 600))
     pygame.display.set_caption("Collision Avoidance - Menu")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
 
-    # Load assets for UI
+    # Load assets
     try:
         sea_bg = pygame.image.load("sea_bg.png").convert()
     except:
@@ -172,23 +176,20 @@ def main():
         logo_img = pygame.Surface((200, 100), pygame.SRCALPHA)
         pygame.draw.rect(logo_img, (255, 255, 255, 180), logo_img.get_rect())
 
-    # Scale the logo bigger
+    # Scale logo
     scale_factor = 2
     new_logo_width = int(logo_img.get_width() * scale_factor)
     new_logo_height = int(logo_img.get_height() * scale_factor)
     logo_img = pygame.transform.scale(logo_img, (new_logo_width, new_logo_height))
-    logo_x = (screen_width - new_logo_width) // 2
+    logo_x = (800 - new_logo_width) // 2
     logo_y = 30
 
-    # We'll use a horizontal offset for the background
     sea_scroll_x = 0.0
-    sea_scroll_speed = 30.0  # px per second
+    sea_scroll_speed = 30.0
 
-    # States
     current_state = STATE_MAIN_MENU
     running = True
 
-    # scenario data
     scenario_data = {
         "map_size": 6.0,
         "safe_distance": 0.2,
@@ -203,10 +204,10 @@ def main():
     sim = None
     ships = []
     ship_roles = {}
-    SIM_W, SIM_H = 800, 800
+
+    # We'll scale the map to 800 px for the "map" portion
     nm_to_px = 100.0
 
-    # define up to 5 distinct colors for ships:
     ship_colors = [
         (0, 255, 0),
         (255, 255, 0),
@@ -214,6 +215,9 @@ def main():
         (0, 0, 0),
         (128, 0, 128)
     ]
+
+    # Pause variable
+    paused = False
 
     def load_scenario_from_json():
         root = tk.Tk()
@@ -235,7 +239,6 @@ def main():
                 print("Error loading JSON.")
         return False
 
-    # ---- UI for Manual Setup
     font_small = pygame.font.SysFont(None, 24)
 
     box_map_size    = TextBox((300, 100, 120, 30), font, "6")
@@ -251,15 +254,10 @@ def main():
         start_y = 150
         for i in range(num):
             row = []
-            # speed
             row.append(TextBox((80, start_y, 80, 30), font, "20"))
-            # start(x,y)
             row.append(TextBox((180, start_y, 100, 30), font, "0,0"))
-            # dest(x,y)
             row.append(TextBox((300, start_y, 100, 30), font, "5,5"))
-            # length
             row.append(TextBox((420, start_y, 80, 30), font, "300"))
-            # width
             row.append(TextBox((520, start_y, 80, 30), font, "50"))
             new_list.append(row)
             start_y += 60
@@ -270,17 +268,14 @@ def main():
     while running:
         dt = clock.tick(30) / 1000.0
 
-        # For menu-like states, draw the scrolling background
         if current_state in (STATE_MAIN_MENU, STATE_AUTO_MODE, STATE_MANUAL_SCENARIO):
             sea_scroll_x = draw_scrolling_bg(screen, sea_bg, sea_scroll_x, sea_scroll_speed, dt)
 
         if current_state == STATE_MAIN_MENU:
-            # Draw the centered and scaled logo
             screen.blit(logo_img, (logo_x, logo_y))
-
-            btn_manual = pygame.Rect((screen_width - 200) // 2, 250, 200, 50)
-            btn_auto   = pygame.Rect((screen_width - 200) // 2, 340, 200, 50)
-            btn_exit   = pygame.Rect((screen_width - 200) // 2, 430, 200, 50)
+            btn_manual = pygame.Rect((800 - 200)//2, 250, 200, 50)
+            btn_auto   = pygame.Rect((800 - 200)//2, 340, 200, 50)
+            btn_exit   = pygame.Rect((800 - 200)//2, 430, 200, 50)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -296,11 +291,9 @@ def main():
             draw_button(screen, btn_manual, "Manual Mode", font, color=(0, 100, 180))
             draw_button(screen, btn_auto,   "Automatic Mode", font, color=(0, 100, 180))
             draw_button(screen, btn_exit,   "Exit",           font, color=(0, 100, 180))
-
             pygame.display.flip()
 
         elif current_state == STATE_AUTO_MODE:
-            # Dark overlay for contrast
             overlay = pygame.Surface((800, 600), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
@@ -324,7 +317,7 @@ def main():
                         else:
                             print("No valid JSON or no ships loaded!")
 
-            draw_button(screen, btn_back,  "Back", font)
+            draw_button(screen, btn_back,  "Back",  font)
             draw_button(screen, btn_load,  "Load JSON", font)
             draw_button(screen, btn_start, "Start", font)
             pygame.display.flip()
@@ -344,7 +337,6 @@ def main():
                     if btn_back.collidepoint(event.pos):
                         current_state = STATE_MAIN_MENU
                     elif btn_next.collidepoint(event.pos):
-                        # parse scenario params
                         scenario_data["map_size"]      = box_map_size.get_float(6.0)
                         scenario_data["safe_distance"] = box_safe_dist.get_float(0.2)
                         scenario_data["heading_range"] = box_search_rng.get_float(40)
@@ -388,20 +380,17 @@ def main():
             pygame.display.flip()
 
         elif current_state == STATE_MANUAL_SHIP_SETUP:
-            # We switch to bigger window once
             if not manual_setup_screen_set:
                 screen = pygame.display.set_mode((900, 700))
                 pygame.display.set_caption("Ship Setup")
                 manual_setup_screen_set = True
 
-            # 1) Draw the scrolling background on a bigger window
-            dt_ms = clock.tick(30)  # re-check dt specifically for new screen
+            dt_ms = clock.tick(30)
             dt_manual = dt_ms / 1000.0
             sea_scroll_x = draw_scrolling_bg(screen, sea_bg, sea_scroll_x, sea_scroll_speed, dt_manual)
 
-            # 2) Semi-transparent overlay
             overlay = pygame.Surface((900, 700), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 100))  # dark gray with alpha=220 (~85% opaque)
+            overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
 
             btn_back  = pygame.Rect(50, 600, 120, 40)
@@ -409,7 +398,6 @@ def main():
 
             local_ship_boxes = scenario_data.get("ship_boxes", [])
 
-            # Event handling
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
@@ -420,7 +408,6 @@ def main():
                         manual_setup_screen_set = False
                         current_state = STATE_MANUAL_SCENARIO
                     elif btn_start.collidepoint(event.pos):
-                        # gather all the text box data
                         scenario_data["ships"] = []
                         for i, row in enumerate(local_ship_boxes):
                             speedBox, startBox, destBox, lenBox, widBox = row
@@ -458,11 +445,9 @@ def main():
                     for tb in row:
                         tb.handle_event(event)
 
-            # 3) Draw the header
             header_surf = font.render("Speed | Start(x,y) | Dest(x,y) | Length(m) | Width(m)", True, (255, 255, 255))
             screen.blit(header_surf, (80, 90))
 
-            # 4) Draw each row
             y = 150
             for i, row in enumerate(local_ship_boxes):
                 label_ship = font.render(f"Ship {i+1} ", True, (255, 255, 255))
@@ -477,7 +462,6 @@ def main():
 
         elif current_state == STATE_SIMULATION:
             if sim is None:
-                # Build the simulator
                 loaded_ships = []
                 for i, sdata in enumerate(scenario_data["ships"]):
                     sname   = sdata.get("name", f"Ship{i+1}")
@@ -505,34 +489,49 @@ def main():
                 ships = sim.ships
                 ship_roles = {sh.name: "" for sh in ships}
 
-                screen = pygame.display.set_mode((SIM_W, SIM_H))
+                # Switch to 800x800
+                screen = pygame.display.set_mode((800, 800))
                 pygame.display.set_caption("Collision Avoidance - Simulation")
-                nm_to_px = SIM_W / scenario_data["map_size"]
+
+                nm_to_px = 800 / scenario_data["map_size"]
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        paused = not paused
 
-            collision_info = sim.get_collisions_with_roles()
-            for sh in ships:
-                ship_roles[sh.name] = ""
+            if not paused:
+                sim.step(debug=True)
+                for sh in ships:
+                    sh.trail.append((sh.x, sh.y))
 
-            for (dist_cpa, i, j, encounter, roleA, roleB) in collision_info:
-                if ship_roles[ships[i].name] == "":
-                    ship_roles[ships[i].name] = roleA
-                if ship_roles[ships[j].name] == "":
-                    ship_roles[ships[j].name] = roleB
+            # Fill map area
+            map_rect = pygame.Rect(0, 0, 800, 800)
+            pygame.draw.rect(screen, (130, 180, 255), map_rect)
 
-            sim.step(debug=False)
-
-            for sh in ships:
-                sh.trail.append((sh.x, sh.y))
-
-            screen.fill((130, 180, 255))
-
+            # Draw each ship's trail, safety circle, and rectangle
             for s in ships:
-                draw_ship_trail(screen, s, nm_to_px, SIM_H)
-                draw_ship_rect(screen, s, nm_to_px, SIM_H)
+                draw_ship_trail(screen, s, nm_to_px, 800)
+
+                # NEW: draw the safety circle
+                draw_safety_circle(
+                    screen,
+                    s,
+                    sim.safe_distance,  # from scenario or sim
+                    nm_to_px,
+                    800
+                )
+
+                draw_ship_rect(screen, s, nm_to_px, 800)
+
+            # Show "PAUSED" if paused
+            if paused:
+                pause_overlay = pygame.Surface((800, 800), pygame.SRCALPHA)
+                screen.blit(pause_overlay, (0,0))
+                pause_text = font.render("PAUSED", True, (255, 0, 0))
+                screen.blit(pause_text, (10, 20))
 
             pygame.display.flip()
             clock.tick(2)
@@ -545,6 +544,7 @@ def main():
 
     pygame.quit()
     sys.exit()
+
 
 if __name__ == "__main__":
     main()
