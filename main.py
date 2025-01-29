@@ -150,13 +150,13 @@ def main():
 
     # Load assets
     try:
-        sea_bg = pygame.image.load("sea_bg.png").convert()
+        sea_bg = pygame.image.load("./images/sea_bg.png").convert()
     except:
         sea_bg = pygame.Surface((800, 600))
         sea_bg.fill((0, 100, 200))
 
     try:
-        logo_img = pygame.image.load("logo.png").convert_alpha()
+        logo_img = pygame.image.load("./images/logo.png").convert_alpha()
     except:
         logo_img = pygame.Surface((200, 100), pygame.SRCALPHA)
         pygame.draw.rect(logo_img, (255, 255, 255, 180), logo_img.get_rect())
