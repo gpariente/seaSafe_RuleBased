@@ -1,0 +1,65 @@
+{
+  "map_size": 6.0,
+  "num_ships": 5,
+  "safe_distance": 0.2,
+  "heading_range": 40,
+  "heading_step": 1,
+  "time_step": 30,
+  "ships": [
+    {
+      "name": "ShipA",
+      "length_m": 300,
+      "width_m": 50,
+      "speed": 18,
+      "heading": 45,
+      "start_x": 0.0,
+      "start_y": 0.0,
+      "dest_x": 5.0,
+      "dest_y": 5.0
+    },
+    {
+      "name": "ShipB",
+      "length_m": 300,
+      "width_m": 50,
+      "speed": 18,
+      "heading": 135,
+      "start_x": 5.0,
+      "start_y": 0.0,
+      "dest_x": 0.0,
+      "dest_y": 5.0
+    },
+    {
+      "name": "ShipC",
+      "length_m": 300,
+      "width_m": 50,
+      "speed": 18,
+      "heading": 225,
+      "start_x": 5.0,
+      "start_y": 5.0,
+      "dest_x": 0.0,
+      "dest_y": 0.0
+    },
+    {
+      "name": "ShipD",
+      "length_m": 300,
+      "width_m": 50,
+      "speed": 18,
+      "heading": 315,
+      "start_x": 0.0,
+      "start_y": 5.0,
+      "dest_x": 5.0,
+      "dest_y": 0.0
+    },
+    {
+      "name": "ShipE",
+      "length_m": 300,
+      "width_m": 50,
+      "speed": 18,
+      "heading": 0,
+      "start_x": 3.0,
+      "start_y": 3.0,
+      "dest_x": 3.0,
+      "dest_y": 6.0
+    }
+  ]
+}
