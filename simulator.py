@@ -45,7 +45,7 @@ class Simulator:
             self.no_collision_count = 0
 
         # 3) if collision-free multiple steps => revert heading
-        if self.no_collision_count > 5:
+        if self.no_collision_count > 10:
             for sh in self.ships:
                 if sh.distance_to_destination() > self.destination_threshold:
                     self.revert_heading_with_clamp(sh)
@@ -61,7 +61,7 @@ class Simulator:
 
             improved_any = False
             for dist_cpa, t_cpa, i, j in collisions:
-                if dist_cpa >= 2.1 * self.safe_distance:
+                if dist_cpa >= 2.2 * self.safe_distance:
                     continue
                 shipA = self.ships[i]
                 shipB = self.ships[j]
@@ -130,14 +130,14 @@ class Simulator:
 
     def detect_collisions(self):
         """
-        Return list of (dist_cpa, t_cpa, i, j) for pairs with dist_cpa < 2.1 * safe_distance.
+        Return list of (dist_cpa, t_cpa, i, j) for pairs with dist_cpa < 2.1 * safe_distance, sorted by tcpa
         """
         pairs = []
         n = len(self.ships)
         for i in range(n):
             for j in range(i+1, n):
                 dist_cpa, t_cpa = compute_cpa_and_tcpa(self.ships[i], self.ships[j])
-                if dist_cpa < 2.1 * self.safe_distance:
+                if dist_cpa < 2.2 * self.safe_distance:
                     pairs.append((dist_cpa, t_cpa, i, j))
         pairs.sort(key=lambda x: (x[1], x[0]))  # sort by t_cpa, then dist_cpa
         return pairs
@@ -227,7 +227,7 @@ class Simulator:
         results = []
         collisions = self.detect_collisions()
         for dist_cpa, t_cpa, i, j in collisions:
-            if dist_cpa >= 2.1 * self.safe_distance:
+            if dist_cpa >= 2.2 * self.safe_distance:
                 continue
             shipA = self.ships[i]
             shipB = self.ships[j]

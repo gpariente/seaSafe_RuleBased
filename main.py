@@ -144,7 +144,7 @@ def main():
 
     # We'll start with 800x600 for the menu
     screen = pygame.display.set_mode((800, 600))
-    pygame.display.set_caption("Collision Avoidance - Menu")
+    pygame.display.set_caption("SeaSafe Simulator")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
 
