@@ -2,7 +2,7 @@
   "map_size": 8.0,
   "num_ships": 2,
   "safe_distance": 0.2,
-  "heading_range": 30,
+  "heading_range": 40,
   "heading_step": 10,
   "time_step": 30,
   "ships": [

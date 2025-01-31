@@ -61,7 +61,6 @@ class TextBox:
         except ValueError:
             return default
 
-
 ###############################################################################
 # 3) Helper Functions
 ###############################################################################
@@ -135,15 +134,17 @@ def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, screen_height):
     if radius_px > 0:
         pygame.draw.circle(screen, (255, 0, 0), (center_x, center_y), radius_px, 1)
 
-
 ###############################################################################
 # 5) Main Program
 ###############################################################################
 def main():
     pygame.init()
 
-    # We'll start with 800x600 for the menu
-    screen = pygame.display.set_mode((800, 600))
+    # We'll make the simulation screen 800 wide x 840 tall:
+    # 800x800 for the map, + 40 px at the bottom for buttons
+    # But for menu states, we still do 800x600
+    screen_width, screen_height = 800, 600
+    screen = pygame.display.set_mode((screen_width, screen_height))
     pygame.display.set_caption("SeaSafe Simulator")
     clock = pygame.time.Clock()
     font = pygame.font.SysFont(None, 28)
@@ -199,8 +200,6 @@ def main():
     ]
 
     paused = False
-
-    # NEW: We'll store a warning message for the Automatic Mode screen
     warning_msg_auto = ""
 
     def load_scenario_from_json():
@@ -225,7 +224,6 @@ def main():
 
     font_small = pygame.font.SysFont(None, 24)
 
-    # TextBoxes for manual scenario
     box_map_size    = TextBox((300, 100, 120, 30), font, "6")
     box_safe_dist   = TextBox((300, 150, 120, 30), font, "0.2")
     box_search_rng  = TextBox((300, 200, 120, 30), font, "40")
@@ -249,6 +247,9 @@ def main():
         return new_list
 
     manual_setup_screen_set = False
+
+    # We'll track scenario_finished and show replay/back buttons
+    scenario_finished = False
 
     while running:
         dt = clock.tick(30) / 1000.0
@@ -313,12 +314,10 @@ def main():
                         else:
                             warning_msg_auto = "No valid JSON or no ships loaded!"
 
-            # Draw buttons
             draw_button(screen, btn_back,  "Back",  font)
             draw_button(screen, btn_load,  "Load JSON", font)
             draw_button(screen, btn_start, "Start", font)
 
-            # Draw any warning msg in red
             if warning_msg_auto:
                 msg_surf = font.render(warning_msg_auto, True, (255, 0, 0))
                 screen.blit(msg_surf, (200, 400))
@@ -407,7 +406,7 @@ def main():
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if btn_back.collidepoint(event.pos):
                         screen = pygame.display.set_mode((800, 600))
-                        pygame.display.set_caption("Collision Avoidance - Menu")
+                        pygame.display.set_caption("SeaSafe Simulator")
                         manual_setup_screen_set = False
                         current_state = STATE_MANUAL_SCENARIO
                     elif btn_start.collidepoint(event.pos):
@@ -440,7 +439,7 @@ def main():
                             })
 
                         screen = pygame.display.set_mode((800, 600))
-                        pygame.display.set_caption("Collision Avoidance - Menu")
+                        pygame.display.set_caption("SeaSafe Simulator")
                         manual_setup_screen_set = False
                         current_state = STATE_SIMULATION
 
@@ -464,7 +463,14 @@ def main():
             pygame.display.flip()
 
         elif current_state == STATE_SIMULATION:
+            # Make the sim window 800 wide x 840 tall
             if sim is None:
+                # Create an 800x840 window
+                #  - The top 800x800 for the simulation
+                #  - The bottom 800x40 for UI buttons
+                screen = pygame.display.set_mode((800, 840))
+                pygame.display.set_caption("Collision Avoidance - Simulation")
+
                 loaded_ships = []
                 for i, sdata in enumerate(scenario_data["ships"]):
                     sname   = sdata.get("name", f"Ship{i+1}")
@@ -492,35 +498,53 @@ def main():
                 ships = sim.ships
                 ship_roles = {sh.name: "" for sh in ships}
 
-                # Switch to 800x800
-                screen = pygame.display.set_mode((800, 800))
-                pygame.display.set_caption("Collision Avoidance - Simulation")
-
                 nm_to_px = 800 / scenario_data["map_size"]
+
+                # If the user replays, we should reset scenario_finished
+                scenario_finished = False
+                paused = False
+
+            # We define button rects at the bottom
+            btn_back_sim   = pygame.Rect(10, 800, 100, 35)
+            btn_replay_sim = pygame.Rect(120, 800, 100, 35)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if btn_back_sim.collidepoint(event.pos):
+                        # go back to main menu
+                        current_state = STATE_MAIN_MENU
+                        sim = None
+                    elif btn_replay_sim.collidepoint(event.pos):
+                        # Re-init sim, same scenario
+                        sim = None
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         paused = not paused
 
-            if not paused:
-                sim.step(debug=False)
-                for sh in ships:
-                    sh.trail.append((sh.x, sh.y))
+            # If scenario not finished, run the step logic
+            if not scenario_finished:
+                if sim is not None and not paused:
+                    sim.step(debug=False)
+                    for sh in ships:
+                        sh.trail.append((sh.x, sh.y))
 
-            # Fill map area
+                # if all ships done => scenario finished
+                if sim.all_ships_arrived():
+                    scenario_finished = True
+
+            # draw the map area
             map_rect = pygame.Rect(0, 0, 800, 800)
             pygame.draw.rect(screen, (130, 180, 255), map_rect)
 
-            # Draw each ship's trail, safety circle, and rectangle
+            # draw ships
             for s in ships:
                 draw_ship_trail(screen, s, nm_to_px, 800)
                 draw_safety_circle(screen, s, sim.safe_distance, nm_to_px, 800)
                 draw_ship_rect(screen, s, nm_to_px, 800)
 
-            # NEW: Display "Current Time Step" and "Press SPACE to Stop"
+            # info labels
             time_label = font.render(f"Current Time Step: {sim.current_time}s", True, (0, 0, 0))
             screen.blit(time_label, (10, 10))
 
@@ -533,18 +557,28 @@ def main():
                 pause_text = font.render("PAUSED", True, (255, 0, 0))
                 screen.blit(pause_text, (10, 60))
 
-            pygame.display.flip()
-            clock.tick(2)
+            # If scenario finished, show "Scenario finished" label
+            if scenario_finished:
+                finish_text = font.render("Scenario finished - all ships reached destinations!", True, (0,150,0))
+                # center it
+                fx = (800 - finish_text.get_width())//2
+                fy = 400 - (finish_text.get_height()//2)
+                screen.blit(finish_text, (fx, fy))
 
-            if sim.all_ships_arrived():
-                running = False
+            # Draw the bottom UI area
+            ui_bg = pygame.Rect(0, 800, 800, 40)
+            pygame.draw.rect(screen, (60,60,60), ui_bg)
+            draw_button(screen, btn_back_sim,   "Back",   font)
+            draw_button(screen, btn_replay_sim, "Replay", font)
+
+            pygame.display.flip()
+            clock.tick(3)
 
         else:
             running = False
 
     pygame.quit()
     sys.exit()
-
 
 if __name__ == "__main__":
     main()

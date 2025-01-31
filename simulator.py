@@ -61,7 +61,7 @@ class Simulator:
 
             improved_any = False
             for dist_cpa, t_cpa, i, j in collisions:
-                if dist_cpa >= 2.2 * self.safe_distance:
+                if dist_cpa >= 4 * self.safe_distance:
                     continue
                 shipA = self.ships[i]
                 shipB = self.ships[j]
@@ -137,7 +137,7 @@ class Simulator:
         for i in range(n):
             for j in range(i+1, n):
                 dist_cpa, t_cpa = compute_cpa_and_tcpa(self.ships[i], self.ships[j])
-                if dist_cpa < 2.2 * self.safe_distance:
+                if dist_cpa < 4 * self.safe_distance:
                     pairs.append((dist_cpa, t_cpa, i, j))
         pairs.sort(key=lambda x: (x[1], x[0]))  # sort by t_cpa, then dist_cpa
         return pairs
@@ -227,7 +227,7 @@ class Simulator:
         results = []
         collisions = self.detect_collisions()
         for dist_cpa, t_cpa, i, j in collisions:
-            if dist_cpa >= 2.2 * self.safe_distance:
+            if dist_cpa >= 4 * self.safe_distance:
                 continue
             shipA = self.ships[i]
             shipB = self.ships[j]
