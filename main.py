@@ -415,8 +415,10 @@ def main():
             sea_scroll_x = draw_scrolling_bg(screen, sea_bg, sea_scroll_x, sea_scroll_speed, dt)
 
         if current_state == STATE_MAIN_MENU:
+            if screen.get_size() != (800,600):
+                screen = pygame.display.set_mode((800,600))
+                pygame.display.set_caption("SeaSafe Simulator")
             screen.blit(logo_img, (logo_x, logo_y))
-
             btn_manual = pygame.Rect((800 - 200)//2, 250, 200, 50)
             btn_auto   = pygame.Rect((800 - 200)//2, 340, 200, 50)
             btn_exit   = pygame.Rect((800 - 200)//2, 430, 200, 50)
@@ -631,10 +633,50 @@ def main():
             total_width = left_label_margin + map_width + right_margin
             total_height = top_margin + map_height + bottom_margin + ui_panel_height
 
-            if sim is None:
-                screen = pygame.display.set_mode((total_width, total_height))
-                pygame.display.set_caption("Collision Avoidance - Simulation")
-                
+            # Always set the display mode and caption (this is safe to call each iteration)
+            screen = pygame.display.set_mode((total_width, total_height))
+            pygame.display.set_caption("Collision Avoidance - Simulation")
+            
+            # Fill the entire background with the sea background color
+            screen.fill((130, 180, 255))
+
+            # Define rectangles for each area.
+            map_rect = pygame.Rect(left_label_margin, top_margin, map_width, map_height)
+            y_axis_margin_rect = pygame.Rect(0, top_margin, left_label_margin, map_height)
+            x_axis_margin_rect = pygame.Rect(left_label_margin, top_margin + map_height, map_width, bottom_margin)
+            ui_panel_rect = pygame.Rect(left_label_margin, top_margin + map_height + bottom_margin, map_width, ui_panel_height)
+
+            # Define UI buttons (positioned within the UI panel).
+            btn_back_sim   = pygame.Rect(left_label_margin + 10, ui_panel_rect.top + 5, 100, 35)
+            btn_replay_sim = pygame.Rect(left_label_margin + 120, ui_panel_rect.top + 5, 100, 35)
+
+            # -- Process events --
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    if btn_back_sim.collidepoint(event.pos):
+                        # Back: Return to the previous screen.
+                        current_state = STATE_MAIN_MENU
+                        sim = None
+                        paused = False
+                        scenario_finished = False
+                    elif btn_replay_sim.collidepoint(event.pos):
+                        # Replay: Restart the simulation.
+                        sim = None
+                        paused = False
+                        scenario_finished = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        paused = not paused
+                        
+            if current_state != STATE_SIMULATION:
+                continue
+
+            # -- Reinitialize simulation if needed --
+            # (This is placed after event processing so that if Replay was pressed,
+            #  we immediately reinitialize the simulation.)
+            if sim is None and current_state == STATE_SIMULATION:
                 loaded_ships = []
                 for i, sdata in enumerate(scenario_data["ships"]):
                     sname   = sdata.get("name", f"Ship{i+1}")
@@ -646,12 +688,10 @@ def main():
                     dy_     = sdata.get("dest_y", 5.0)
                     length_ = sdata.get("length_m", 300)
                     width_  = sdata.get("width_m", 50)
-
                     ship_obj = Ship(sname, sx, sy, heading, speed, dx_, dy_, length_, width_)
                     ship_obj.color = ship_colors[i % len(ship_colors)]
                     ship_obj.trail = []
                     loaded_ships.append(ship_obj)
-
                 sim = Simulator(
                     ships=loaded_ships,
                     time_step=scenario_data["time_step"],
@@ -661,62 +701,24 @@ def main():
                 )
                 ships = sim.ships
                 ship_roles = {sh.name: "" for sh in ships}
-
                 nm_to_px = map_width / scenario_data["map_size"]
-
                 scenario_finished = False
                 paused = False
 
-            # Fill the entire background with the sea background color
-            # This replaces the previous white fill to ensure no white gaps appear.
-            screen.fill((130, 180, 255))
-
-            # Define rectangles for each area.
-            # The map area starts after the left margin.
-            map_rect = pygame.Rect(left_label_margin, top_margin, map_width, map_height)
-            # Left margin for y-axis labels.
-            y_axis_margin_rect = pygame.Rect(0, top_margin, left_label_margin, map_height)
-            # Bottom margin for x-axis labels (aligned with the map's width).
-            x_axis_margin_rect = pygame.Rect(left_label_margin, top_margin + map_height, map_width, bottom_margin)
-            # UI panel for buttons below the x-axis margin.
-            ui_panel_rect = pygame.Rect(left_label_margin, top_margin + map_height + bottom_margin, map_width, ui_panel_height)
-
-            # Define UI buttons (positioned within the UI panel).
-            btn_back_sim   = pygame.Rect(left_label_margin + 10, ui_panel_rect.top + 5, 100, 35)
-            btn_replay_sim = pygame.Rect(left_label_margin + 120, ui_panel_rect.top + 5, 100, 35)
-
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    running = False
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    if btn_back_sim.collidepoint(event.pos):
-                        current_state = STATE_MAIN_MENU
-                        sim = None
-                        paused = False
-                        scenario_finished = False
-                    elif btn_replay_sim.collidepoint(event.pos):
-                        sim = None
-                        paused = False
-                        scenario_finished = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_SPACE:
-                        paused = not paused
-
-            if not scenario_finished:
-                if sim is not None and not paused:
-                    sim.step(debug=False)
-                    for sh in ships:
-                        sh.trail.append((sh.x, sh.y))
+            # -- Simulation update --
+            if not scenario_finished and sim is not None and not paused:
+                sim.step(debug=False)
+                for sh in ships:
+                    sh.trail.append((sh.x, sh.y))
                 if sim.all_ships_arrived():
                     scenario_finished = True
 
-            # Draw the map area.
-            map_bg_color = (130, 180, 255)
-            pygame.draw.rect(screen, map_bg_color, map_rect)
-            # Draw the grid overlay on the map (ticks every 0.5 NM).
+            # -- Drawing --
+            # Draw the map background and grid.
+            pygame.draw.rect(screen, (130, 180, 255), map_rect)
             draw_grid(screen, map_rect, scenario_data["map_size"], nm_to_px, tick_step=0.5)
 
-            # Draw ship trails, safety circles, and ship shapes.
+            # Draw ship trails, safety circles, and ships.
             for s in ships:
                 draw_ship_trail(screen, s, nm_to_px, map_height, offset_x=left_label_margin, offset_y=top_margin)
                 draw_safety_circle(screen, s, sim.safe_distance, nm_to_px, map_height, offset_x=left_label_margin, offset_y=top_margin)
@@ -727,7 +729,7 @@ def main():
                 dest_y_screen = top_margin + map_height - (s.dest_y * nm_to_px)
                 draw_star(screen, (dest_x_screen, dest_y_screen), 8, s.color)
 
-            # Draw informational labels on the map.
+            # Draw informational labels.
             time_label = font.render(f"Current Time Step: {sim.current_time}s", True, (0, 0, 0))
             screen.blit(time_label, (left_label_margin + 10, top_margin + 10))
             space_label = font.render("Press SPACE to Pause/Resume", True, (200, 0, 0))
@@ -741,22 +743,27 @@ def main():
                 fy = top_margin + map_height // 2 - finish_text.get_height() // 2
                 screen.blit(finish_text, (fx, fy))
 
-            # Draw the y-axis labels in the left margin.
+            # Draw the y-axis and x-axis labels in their dedicated margins.
             draw_y_axis_labels_in_margin(screen, y_axis_margin_rect, scenario_data["map_size"], font, tick_step=0.5)
-            # Draw the x-axis labels in the bottom margin.
             draw_x_axis_labels_in_margin(screen, x_axis_margin_rect, scenario_data["map_size"], font, tick_step=0.5)
+            
+            # Draw the missing horizontal grid line along the bottom edge of the map.
             pygame.draw.line(
                 screen,
-                (200, 200, 200),  # grid color
+                (200, 200, 200),
                 (left_label_margin, top_margin + map_height),
-                (left_label_margin + map_width, top_margin + map_height), 1)
-            # Draw the UI panel (with a dark background) and buttons.
+                (left_label_margin + map_width, top_margin + map_height),
+                1
+            )
+            
+            # Draw the UI panel and buttons.
             pygame.draw.rect(screen, (60,60,60), ui_panel_rect)
             draw_button(screen, btn_back_sim, "Back", font)
             draw_button(screen, btn_replay_sim, "Replay", font)
 
             pygame.display.flip()
             clock.tick(3)
+
 
         else:
             running = False
