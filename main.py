@@ -93,32 +93,31 @@ def draw_scrolling_bg(screen, bg_img, scroll_x, scroll_speed, dt):
 
     return scroll_x
 
-def draw_ship_trail(screen, ship, nm_to_px, screen_height):
+def draw_ship_trail(screen, ship, nm_to_px, map_height, offset_x=0, offset_y=0):
     if len(ship.trail) < 2:
         return
     color = ship.color
     for i in range(1, len(ship.trail)):
         x1, y1 = ship.trail[i - 1]
         x2, y2 = ship.trail[i]
-        sx1 = x1 * nm_to_px
-        sy1 = screen_height - (y1 * nm_to_px)
-        sx2 = x2 * nm_to_px
-        sy2 = screen_height - (y2 * nm_to_px)
+        sx1 = offset_x + x1 * nm_to_px
+        sy1 = offset_y + map_height - (y1 * nm_to_px)
+        sx2 = offset_x + x2 * nm_to_px
+        sy2 = offset_y + map_height - (y2 * nm_to_px)
         pygame.draw.line(screen, color, (sx1, sy1), (sx2, sy2), 2)
 
-def draw_ship_rect(screen, ship, nm_to_px, screen_height):
+def draw_ship_rect(screen, ship, nm_to_px, map_height, offset_x=0, offset_y=0):
     length_nm = ship.length_m / 1852.0
     width_nm  = ship.width_m  / 1852.0
     length_px = length_nm * nm_to_px
     width_px  = width_nm  * nm_to_px
 
-    x_screen = ship.x * nm_to_px
-    y_screen = screen_height - (ship.y * nm_to_px)
+    x_screen = offset_x + ship.x * nm_to_px
+    y_screen = offset_y + map_height - (ship.y * nm_to_px)
 
     surf_l = max(1, int(length_px))
     surf_w = max(1, int(width_px))
     ship_surf = pygame.Surface((surf_l, surf_w), pygame.SRCALPHA)
-
     ship_surf.fill(ship.color)
 
     angle_for_pygame = ship.heading
@@ -127,12 +126,170 @@ def draw_ship_rect(screen, ship, nm_to_px, screen_height):
     rect.center = (x_screen, y_screen)
     screen.blit(rotated, rect)
 
-def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, screen_height):
+def draw_safety_circle(screen, ship, safe_distance_nm, nm_to_px, map_height, offset_x=0, offset_y=0):
     radius_px = int(safe_distance_nm * nm_to_px)
-    center_x = int(ship.x * nm_to_px)
-    center_y = int(screen_height - (ship.y * nm_to_px))
+    center_x = int(offset_x + ship.x * nm_to_px)
+    center_y = int(offset_y + map_height - (ship.y * nm_to_px))
     if radius_px > 0:
         pygame.draw.circle(screen, (255, 0, 0), (center_x, center_y), radius_px, 1)
+
+        
+def draw_y_axis_panel(screen, panel_rect, map_size, font):
+    """
+    Draws a vertical coordinate system (y-axis) in the provided panel.
+    """
+    pygame.draw.rect(screen, (220, 220, 220), panel_rect)  # Light grey background
+    axis_x = panel_rect.x + 30
+    axis_top = panel_rect.y + 10
+    axis_bottom = panel_rect.y + panel_rect.height - 10
+    pygame.draw.line(screen, (0, 0, 0), (axis_x, axis_top), (axis_x, axis_bottom), 2)
+    num_ticks = 5
+    for i in range(num_ticks):
+        fraction = i / (num_ticks - 1)
+        y_pos = axis_bottom - fraction * (axis_bottom - axis_top)
+        pygame.draw.line(screen, (0, 0, 0), (axis_x, y_pos), (axis_x - 10, y_pos), 2)
+        value = fraction * map_size
+        label = font.render(f"{value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect()
+        label_rect.right = axis_x - 12
+        label_rect.centery = y_pos
+        screen.blit(label, label_rect)
+
+def draw_x_axis_panel(screen, panel_rect, map_size, font):
+    """
+    Draws a horizontal coordinate system (x-axis) in the provided panel.
+    """
+    pygame.draw.rect(screen, (220, 220, 220), panel_rect)
+    axis_y = panel_rect.y + 20
+    axis_left = panel_rect.x + 10
+    axis_right = panel_rect.x + panel_rect.width - 10
+    pygame.draw.line(screen, (0, 0, 0), (axis_left, axis_y), (axis_right, axis_y), 2)
+    num_ticks = 5
+    for i in range(num_ticks):
+        fraction = i / (num_ticks - 1)
+        x_pos = axis_left + fraction * (axis_right - axis_left)
+        pygame.draw.line(screen, (0, 0, 0), (x_pos, axis_y), (x_pos, axis_y + 10), 2)
+        value = fraction * map_size
+        label = font.render(f"{value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect()
+        label_rect.centerx = x_pos
+        label_rect.top = axis_y + 12
+        screen.blit(label, label_rect)
+        
+def draw_y_axis_labels_in_margin(screen, margin_rect, map_size, font, tick_step=0.5):
+    """
+    Draws y-axis tick marks and labels in the left margin.
+    margin_rect: a pygame.Rect representing the left margin area.
+    map_size: map size in NM.
+    tick_step: spacing between ticks in NM.
+    """
+    bg_color = (130, 180, 255)  # Same as the map background.
+    pygame.draw.rect(screen, bg_color, margin_rect)
+    num_ticks = int(map_size / tick_step) + 1
+    for i in range(num_ticks):
+        tick_value = i * tick_step
+        # Compute the y coordinate in the margin to match the map’s vertical scale.
+        y = margin_rect.bottom - (tick_value / map_size) * margin_rect.height
+        # Draw a small horizontal tick mark at the right edge of the margin.
+        tick_start = (margin_rect.right - 10, y)
+        tick_end = (margin_rect.right, y)
+        pygame.draw.line(screen, (0, 0, 0), tick_start, tick_end, 2)
+        # Render the label (aligned to the right of the margin).
+        label = font.render(f"{tick_value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect(midright=(margin_rect.right - 12, y))
+        screen.blit(label, label_rect)
+
+def draw_x_axis_labels_in_margin(screen, margin_rect, map_size, font, tick_step=0.5):
+    """
+    Draws x-axis tick marks and labels in the bottom margin.
+    margin_rect: a pygame.Rect representing the bottom margin area.
+    map_size: map size in NM.
+    tick_step: spacing between ticks in NM.
+    """
+    bg_color = (130, 180, 255)  # Use the same background color as the map.
+    pygame.draw.rect(screen, bg_color, margin_rect)
+    num_ticks = int(map_size / tick_step) + 1
+    for i in range(num_ticks):
+        tick_value = i * tick_step
+        # Compute the x coordinate in the margin (matching the map’s horizontal scale).
+        x = margin_rect.left + (tick_value / map_size) * margin_rect.width
+        # Draw a small vertical tick mark at the top of the margin.
+        tick_start = (x, margin_rect.top)
+        tick_end = (x, margin_rect.top + 10)
+        pygame.draw.line(screen, (0, 0, 0), tick_start, tick_end, 2)
+        # Render the label (centered horizontally, just below the tick mark).
+        label = font.render(f"{tick_value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect(midtop=(x, margin_rect.top + 12))
+        screen.blit(label, label_rect)
+
+
+
+def draw_grid(screen, map_rect, map_size, nm_to_px, tick_step=0.5, color=(200,200,200)):
+    """
+    Draws a grid overlay on the map area using a fixed tick step.
+    For example, with tick_step=0.5 and map_size=6, grid lines are drawn at every 0.5 NM.
+    """
+    num_ticks = int(map_size / tick_step) + 1
+    # Vertical grid lines.
+    for i in range(num_ticks):
+        x = map_rect.left + i * tick_step * nm_to_px
+        pygame.draw.line(screen, color, (x, map_rect.top), (x, map_rect.bottom), 1)
+    # Horizontal grid lines.
+    for i in range(num_ticks):
+        y = map_rect.bottom - i * tick_step * nm_to_px
+        pygame.draw.line(screen, color, (map_rect.left, y), (map_rect.right, y), 1)
+
+def draw_x_axis_labels_on_map(screen, map_rect, map_size, font, tick_step=0.5):
+    """
+    Draws x-axis labels (tick values) directly on the bottom border of the map.
+    The ticks are drawn at every tick_step (e.g., every 0.5 NM) so that the left and right 
+    boundaries of the map show the correct values.
+    """
+    num_ticks = int(map_size / tick_step) + 1
+    for i in range(num_ticks):
+        tick_value = i * tick_step
+        # Calculate x coordinate along the bottom border.
+        x = map_rect.left + (tick_value / map_size) * map_rect.width
+        # Inset the label a few pixels inside the map.
+        y = map_rect.bottom - 5
+        label = font.render(f"{tick_value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect(midbottom=(x, y))
+        screen.blit(label, label_rect)
+
+def draw_y_axis_labels_on_map(screen, map_rect, map_size, font, tick_step=0.5):
+    """
+    Draws y-axis labels (tick values) directly on the left border of the map.
+    The ticks are drawn at every tick_step (e.g., every 0.5 NM) so that the bottom and top 
+    boundaries of the map show the correct values.
+    """
+    num_ticks = int(map_size / tick_step) + 1
+    for i in range(num_ticks):
+        tick_value = i * tick_step
+        # Calculate y coordinate (with 0 at the bottom).
+        y = map_rect.bottom - (tick_value / map_size) * map_rect.height
+        # Inset the label a few pixels inside the map.
+        x = map_rect.left + 5
+        label = font.render(f"{tick_value:.1f}", True, (0, 0, 0))
+        label_rect = label.get_rect(midleft=(x, y))
+        screen.blit(label, label_rect)
+
+
+
+def draw_star(screen, center, radius, color):
+    """
+    Draws a 5-pointed star at the given center with the specified radius and color.
+    """
+    import math  # already imported in your file
+    points = []
+    inner_radius = radius * 0.5
+    for i in range(10):
+        angle = math.radians(i * 36)  # 36° between points
+        r = radius if i % 2 == 0 else inner_radius
+        x = center[0] + r * math.cos(angle)
+        y = center[1] + r * math.sin(angle)
+        points.append((x, y))
+    pygame.draw.polygon(screen, color, points)
+
 
 ###############################################################################
 # 5) Main Program
@@ -463,14 +620,21 @@ def main():
             pygame.display.flip()
 
         elif current_state == STATE_SIMULATION:
-            # Make the sim window 800 wide x 840 tall
-            if sim is None:
-                # Create an 800x840 window
-                #  - The top 800x800 for the simulation
-                #  - The bottom 800x40 for UI buttons
-                screen = pygame.display.set_mode((800, 840))
-                pygame.display.set_caption("Collision Avoidance - Simulation")
+            # Layout configuration:
+            left_label_margin = 60    # Left margin for y-axis labels.
+            top_margin = 20
+            map_width = 800
+            map_height = 800
+            bottom_margin = 60        # Bottom margin for x-axis labels.
+            ui_panel_height = 40      # UI panel for buttons below the x-axis margin.
+            right_margin = 20
+            total_width = left_label_margin + map_width + right_margin
+            total_height = top_margin + map_height + bottom_margin + ui_panel_height
 
+            if sim is None:
+                screen = pygame.display.set_mode((total_width, total_height))
+                pygame.display.set_caption("Collision Avoidance - Simulation")
+                
                 loaded_ships = []
                 for i, sdata in enumerate(scenario_data["ships"]):
                     sname   = sdata.get("name", f"Ship{i+1}")
@@ -498,77 +662,97 @@ def main():
                 ships = sim.ships
                 ship_roles = {sh.name: "" for sh in ships}
 
-                nm_to_px = 800 / scenario_data["map_size"]
+                nm_to_px = map_width / scenario_data["map_size"]
 
-                # If the user replays, we should reset scenario_finished
                 scenario_finished = False
                 paused = False
 
-            # We define button rects at the bottom
-            btn_back_sim   = pygame.Rect(10, 800, 100, 35)
-            btn_replay_sim = pygame.Rect(120, 800, 100, 35)
+            # Fill the entire background with the sea background color
+            # This replaces the previous white fill to ensure no white gaps appear.
+            screen.fill((130, 180, 255))
+
+            # Define rectangles for each area.
+            # The map area starts after the left margin.
+            map_rect = pygame.Rect(left_label_margin, top_margin, map_width, map_height)
+            # Left margin for y-axis labels.
+            y_axis_margin_rect = pygame.Rect(0, top_margin, left_label_margin, map_height)
+            # Bottom margin for x-axis labels (aligned with the map's width).
+            x_axis_margin_rect = pygame.Rect(left_label_margin, top_margin + map_height, map_width, bottom_margin)
+            # UI panel for buttons below the x-axis margin.
+            ui_panel_rect = pygame.Rect(left_label_margin, top_margin + map_height + bottom_margin, map_width, ui_panel_height)
+
+            # Define UI buttons (positioned within the UI panel).
+            btn_back_sim   = pygame.Rect(left_label_margin + 10, ui_panel_rect.top + 5, 100, 35)
+            btn_replay_sim = pygame.Rect(left_label_margin + 120, ui_panel_rect.top + 5, 100, 35)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     if btn_back_sim.collidepoint(event.pos):
-                        # go back to main menu
                         current_state = STATE_MAIN_MENU
                         sim = None
+                        paused = False
+                        scenario_finished = False
                     elif btn_replay_sim.collidepoint(event.pos):
-                        # Re-init sim, same scenario
                         sim = None
+                        paused = False
+                        scenario_finished = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         paused = not paused
 
-            # If scenario not finished, run the step logic
             if not scenario_finished:
                 if sim is not None and not paused:
                     sim.step(debug=False)
                     for sh in ships:
                         sh.trail.append((sh.x, sh.y))
-
-                # if all ships done => scenario finished
                 if sim.all_ships_arrived():
                     scenario_finished = True
 
-            # draw the map area
-            map_rect = pygame.Rect(0, 0, 800, 800)
-            pygame.draw.rect(screen, (130, 180, 255), map_rect)
+            # Draw the map area.
+            map_bg_color = (130, 180, 255)
+            pygame.draw.rect(screen, map_bg_color, map_rect)
+            # Draw the grid overlay on the map (ticks every 0.5 NM).
+            draw_grid(screen, map_rect, scenario_data["map_size"], nm_to_px, tick_step=0.5)
 
-            # draw ships
+            # Draw ship trails, safety circles, and ship shapes.
             for s in ships:
-                draw_ship_trail(screen, s, nm_to_px, 800)
-                draw_safety_circle(screen, s, sim.safe_distance, nm_to_px, 800)
-                draw_ship_rect(screen, s, nm_to_px, 800)
+                draw_ship_trail(screen, s, nm_to_px, map_height, offset_x=left_label_margin, offset_y=top_margin)
+                draw_safety_circle(screen, s, sim.safe_distance, nm_to_px, map_height, offset_x=left_label_margin, offset_y=top_margin)
+                draw_ship_rect(screen, s, nm_to_px, map_height, offset_x=left_label_margin, offset_y=top_margin)
+            # Draw destination markers (colored stars).
+            for s in ships:
+                dest_x_screen = left_label_margin + s.dest_x * nm_to_px
+                dest_y_screen = top_margin + map_height - (s.dest_y * nm_to_px)
+                draw_star(screen, (dest_x_screen, dest_y_screen), 8, s.color)
 
-            # info labels
+            # Draw informational labels on the map.
             time_label = font.render(f"Current Time Step: {sim.current_time}s", True, (0, 0, 0))
-            screen.blit(time_label, (10, 10))
-
-            space_label = font.render("Press SPACE to Stop", True, (200, 0, 0))
-            screen.blit(space_label, (10, 30))
-
+            screen.blit(time_label, (left_label_margin + 10, top_margin + 10))
+            space_label = font.render("Press SPACE to Pause/Resume", True, (200, 0, 0))
+            screen.blit(space_label, (left_label_margin + 10, top_margin + 30))
             if paused:
-                pause_overlay = pygame.Surface((800, 800), pygame.SRCALPHA)
-                screen.blit(pause_overlay, (0,0))
                 pause_text = font.render("PAUSED", True, (255, 0, 0))
-                screen.blit(pause_text, (10, 60))
-
-            # If scenario finished, show "Scenario finished" label
+                screen.blit(pause_text, (left_label_margin + 10, top_margin + 50))
             if scenario_finished:
                 finish_text = font.render("Scenario finished - all ships reached destinations!", True, (0,150,0))
-                # center it
-                fx = (800 - finish_text.get_width())//2
-                fy = 400 - (finish_text.get_height()//2)
+                fx = left_label_margin + (map_width - finish_text.get_width()) // 2
+                fy = top_margin + map_height // 2 - finish_text.get_height() // 2
                 screen.blit(finish_text, (fx, fy))
 
-            # Draw the bottom UI area
-            ui_bg = pygame.Rect(0, 800, 800, 40)
-            pygame.draw.rect(screen, (60,60,60), ui_bg)
-            draw_button(screen, btn_back_sim,   "Back",   font)
+            # Draw the y-axis labels in the left margin.
+            draw_y_axis_labels_in_margin(screen, y_axis_margin_rect, scenario_data["map_size"], font, tick_step=0.5)
+            # Draw the x-axis labels in the bottom margin.
+            draw_x_axis_labels_in_margin(screen, x_axis_margin_rect, scenario_data["map_size"], font, tick_step=0.5)
+            pygame.draw.line(
+                screen,
+                (200, 200, 200),  # grid color
+                (left_label_margin, top_margin + map_height),
+                (left_label_margin + map_width, top_margin + map_height), 1)
+            # Draw the UI panel (with a dark background) and buttons.
+            pygame.draw.rect(screen, (60,60,60), ui_panel_rect)
+            draw_button(screen, btn_back_sim, "Back", font)
             draw_button(screen, btn_replay_sim, "Replay", font)
 
             pygame.display.flip()
