@@ -10,6 +10,18 @@ from colreg import (
     is_on_starboard_side
 )
 
+# Mapping from RGB tuples to color names.
+COLOR_NAMES = {
+    (0, 255, 0): "Green",
+    (255, 255, 0): "Yellow",
+    (128, 128, 128): "Gray",
+    (0, 0, 0): "Black",
+    (128, 0, 128): "Purple"
+}
+
+def get_color_name(color):
+    return COLOR_NAMES.get(tuple(color), "Unknown")
+
 class Simulator:
     def __init__(self, ships, time_step, safe_distance,
                  heading_search_range, heading_search_step):
@@ -26,15 +38,15 @@ class Simulator:
         self.heading_search_step = heading_search_step
 
         self.ui_log = []
-        self.collisions_avoided = []  # New: List of detailed collision-avoidance messages.
-        # New counters for each encounter type:
-        self.count_headon = 0
-        self.count_crossing = 0
-        self.count_overtaking = 0
-
+        self.collisions_avoided = []  # List of detailed collision-avoidance messages.
         self.current_time = 0.0
         self.destination_threshold = 0.1  # NM
         self.no_collision_count = 0  # consecutive steps collision-free
+
+        # New counters for encounter types.
+        self.count_headon = 0
+        self.count_crossing = 0
+        self.count_overtaking = 0
 
     def step(self, debug=False):
         dt_hours = self.time_step / 3600.0
@@ -72,58 +84,59 @@ class Simulator:
                 shipA = self.ships[i]
                 shipB = self.ships[j]
                 encounter = classify_encounter(shipA, shipB)
-                roles = self.assign_roles(shipA, shipB, encounter)
+                roles = self.assign_roles(shipA, shipB, encounter)  # (roleA, roleB)
                 if debug:
-                    print(f"Resolving {shipA.name} vs {shipB.name}, {encounter}, dist_cpa={dist_cpa:.3f}")
+                    print(f"Resolving {get_color_name(shipA.color)} vs {get_color_name(shipB.color)}, {encounter}, dist_cpa={dist_cpa:.3f}")
 
                 # Process based on encounter type:
                 if encounter == 'head-on':
                     impA = self.apply_multi_ship_starboard(shipA, debug=debug)
                     impB = self.apply_multi_ship_starboard(shipB, debug=debug)
-                    if impA or impB:
+                    if impA:
+                        msg = (f"{get_color_name(shipA.color)} avoided collision in a head-on encounter with "
+                               f"{get_color_name(shipB.color)}, role: {roles[0]}.")
+                        self.collisions_avoided.append(msg)
                         self.count_headon += 1
-                        if impA:
-                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in a head-on encounter with {shipB.name}, role: {roles[0]}.")
-                            self.collisions_avoided.append(msg)
-                        if impB:
-                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in a head-on encounter with {shipA.name}, role: {roles[1]}.")
-                            self.collisions_avoided.append(msg)
+                    if impB:
+                        msg = (f"{get_color_name(shipB.color)} avoided collision in a head-on encounter with "
+                               f"{get_color_name(shipA.color)}, role: {roles[1]}.")
+                        self.collisions_avoided.append(msg)
+                        self.count_headon += 1
+                    if impA or impB:
                         improved_any = True
 
                 elif encounter == 'crossing':
                     if is_on_starboard_side(shipA, shipB):
                         impA = self.apply_multi_ship_starboard(shipA, debug=debug)
                         if impA:
-                            self.count_crossing += 1
-                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in a crossing encounter with {shipB.name}, role: {roles[0]}.")
+                            msg = (f"{get_color_name(shipA.color)} avoided collision in a crossing encounter with "
+                                   f"{get_color_name(shipB.color)}, role: {roles[0]}.")
                             self.collisions_avoided.append(msg)
+                            self.count_crossing += 1
                             improved_any = True
                         else:
                             impB = self.apply_multi_ship_starboard(shipB, stand_on=True, debug=debug)
                             if impB:
-                                self.count_crossing += 1
-                                msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
-                                       f"in a crossing encounter with {shipA.name}, role: {roles[1]}.")
+                                msg = (f"{get_color_name(shipB.color)} avoided collision in a crossing encounter with "
+                                       f"{get_color_name(shipA.color)}, role: {roles[1]}.")
                                 self.collisions_avoided.append(msg)
+                                self.count_crossing += 1
                                 improved_any = True
                     else:
                         impB = self.apply_multi_ship_starboard(shipB, debug=debug)
                         if impB:
-                            self.count_crossing += 1
-                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in a crossing encounter with {shipA.name}, role: {roles[1]}.")
+                            msg = (f"{get_color_name(shipB.color)} avoided collision in a crossing encounter with "
+                                   f"{get_color_name(shipA.color)}, role: {roles[1]}.")
                             self.collisions_avoided.append(msg)
+                            self.count_crossing += 1
                             improved_any = True
                         else:
                             impA = self.apply_multi_ship_starboard(shipA, stand_on=True, debug=debug)
                             if impA:
-                                self.count_crossing += 1
-                                msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
-                                       f"in a crossing encounter with {shipB.name}, role: {roles[0]}.")
+                                msg = (f"{get_color_name(shipA.color)} avoided collision in a crossing encounter with "
+                                       f"{get_color_name(shipB.color)}, role: {roles[0]}.")
                                 self.collisions_avoided.append(msg)
+                                self.count_crossing += 1
                                 improved_any = True
 
                 else:  # overtaking
@@ -131,34 +144,34 @@ class Simulator:
                     if 110 < bearingAB < 250:
                         impB = self.apply_multi_ship_starboard(shipB, debug=debug)
                         if impB:
-                            self.count_overtaking += 1
-                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in an overtaking encounter with {shipA.name}, role: {roles[1]}.")
+                            msg = (f"{get_color_name(shipB.color)} avoided collision in an overtaking encounter with "
+                                   f"{get_color_name(shipA.color)}, role: {roles[1]}.")
                             self.collisions_avoided.append(msg)
+                            self.count_overtaking += 1
                             improved_any = True
                         else:
                             impA = self.apply_multi_ship_starboard(shipA, stand_on=True, debug=debug)
                             if impA:
-                                self.count_overtaking += 1
-                                msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
-                                       f"in an overtaking encounter with {shipB.name}, role: {roles[0]}.")
+                                msg = (f"{get_color_name(shipA.color)} avoided collision in an overtaking encounter with "
+                                       f"{get_color_name(shipB.color)}, role: {roles[0]}.")
                                 self.collisions_avoided.append(msg)
+                                self.count_overtaking += 1
                                 improved_any = True
                     else:
                         impA = self.apply_multi_ship_starboard(shipA, debug=debug)
                         if impA:
-                            self.count_overtaking += 1
-                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
-                                   f"in an overtaking encounter with {shipB.name}, role: {roles[0]}.")
+                            msg = (f"{get_color_name(shipA.color)} avoided collision in an overtaking encounter with "
+                                   f"{get_color_name(shipB.color)}, role: {roles[0]}.")
                             self.collisions_avoided.append(msg)
+                            self.count_overtaking += 1
                             improved_any = True
                         else:
                             impB = self.apply_multi_ship_starboard(shipB, stand_on=True, debug=debug)
                             if impB:
-                                self.count_overtaking += 1
-                                msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
-                                       f"in an overtaking encounter with {shipA.name}, role: {roles[1]}.")
+                                msg = (f"{get_color_name(shipB.color)} avoided collision in an overtaking encounter with "
+                                       f"{get_color_name(shipA.color)}, role: {roles[1]}.")
                                 self.collisions_avoided.append(msg)
+                                self.count_overtaking += 1
                                 improved_any = True
 
             if not improved_any:
@@ -195,7 +208,7 @@ class Simulator:
         remaining_turn = max_range - ship.heading_adjusted
         if remaining_turn <= 0:
             if debug:
-                print(f"{ship.name} has no remaining turn allowed (stand_on={stand_on}).")
+                print(f"{get_color_name(ship.color)} has no remaining turn allowed (stand_on={stand_on}).")
             return False
         current_cpa = self.compute_min_cpa_over_others(ship, base_heading)
         best_cpa = current_cpa
@@ -212,13 +225,11 @@ class Simulator:
             new_heading = base_heading - best_offset
             ship.heading = new_heading
             ship.heading_adjusted += best_offset
-            msg = f"{ship.name} turned starboard {best_offset:.1f} deg => new heading={new_heading:.1f}"
-            self.ui_log.append(msg)
             if debug:
-                print(msg + f", CPA {current_cpa:.3f} -> {best_cpa:.3f}")
+                print(f"{get_color_name(ship.color)} improved CPA: {current_cpa:.3f} -> {best_cpa:.3f} by turning {best_offset:.1f} deg")
             return True
         if debug:
-            print(f"{ship.name} no offset improves CPA (stand_on={stand_on}).")
+            print(f"{get_color_name(ship.color)} no offset improves CPA (stand_on={stand_on}).")
         return False
 
     def compute_min_cpa_over_others(self, give_ship, test_heading):
