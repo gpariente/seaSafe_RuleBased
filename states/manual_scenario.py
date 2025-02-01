@@ -79,13 +79,13 @@ class ManualScenarioState:
         else:
             screen.fill(BG_COLOR)
         # Draw the UI elements on top
-        labels = ["Map Size:", "SafeDist:", "SearchRange:", "SearchStep:", "TimeStep:", "#Ships:"]
+        labels = ["Map Size:", "Safety Zone:", "Heading Range:", "Heading Step:", "Time Step:", "#Ships:"]
         for tb, label_text in zip(self.text_boxes, labels):
             label = self.font.render(label_text, True, (255,255,255))
             screen.blit(label, (tb.rect.x - label.get_width() - 5, tb.rect.y))
             tb.draw(screen)
-        draw_button(screen, self.scaled_buttons["back"], "Back", self.font)
-        draw_button(screen, self.scaled_buttons["next"], "Next", self.font)
+        draw_button(screen, self.scaled_buttons["back"], "Back", self.font,color=(0,100,180))
+        draw_button(screen, self.scaled_buttons["next"], "Next", self.font,color=(0,100,180))
     
     def get_next_state(self):
         next_state = self.next_state

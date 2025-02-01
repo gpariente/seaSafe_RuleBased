@@ -116,8 +116,8 @@ class ManualShipSetupState:
             for tb in row:
                 tb.draw(screen)
             y += 60
-        draw_button(screen, self.scaled_buttons["back"], "Back", self.font)
-        draw_button(screen, self.scaled_buttons["start"], "Start", self.font)
+        draw_button(screen, self.scaled_buttons["back"], "Back", self.font,color=(0,100,180))
+        draw_button(screen, self.scaled_buttons["start"], "Start", self.font,color=(0,100,180))
         # Draw a minimap (dummy version)
         dummy_ships = []
         ship_colors = [(0,255,0), (255,255,0), (128,128,128), (0,0,0), (128,0,128)]

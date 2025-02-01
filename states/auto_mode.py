@@ -105,9 +105,9 @@ class AutoModeState:
             logo_y = int(30 * self.scale_y)
             screen.blit(self.logo_img, (logo_x, logo_y))
         # Draw buttons
-        draw_button(screen, self.scaled_buttons["back"], "Back", self.font)
-        draw_button(screen, self.scaled_buttons["load"], "Load JSON", self.font)
-        draw_button(screen, self.scaled_buttons["start"], "Start", self.font)
+        draw_button(screen, self.scaled_buttons["back"], "Back", self.font,color=(0,100,180))
+        draw_button(screen, self.scaled_buttons["load"], "Load JSON", self.font,color=(0,100,180))
+        draw_button(screen, self.scaled_buttons["start"], "Start", self.font,color=(0,100,180))
         if self.warning_msg:
             warning = self.font.render(self.warning_msg, True, (255,0,0))
             screen.blit(warning, (int(200 * self.scale_x), int(450 * self.scale_y)))
