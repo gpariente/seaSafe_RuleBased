@@ -26,6 +26,12 @@ class Simulator:
         self.heading_search_step = heading_search_step
 
         self.ui_log = []
+        self.collisions_avoided = []  # New: List of detailed collision-avoidance messages.
+        # New counters for each encounter type:
+        self.count_headon = 0
+        self.count_crossing = 0
+        self.count_overtaking = 0
+
         self.current_time = 0.0
         self.destination_threshold = 0.1  # NM
         self.no_collision_count = 0  # consecutive steps collision-free
@@ -33,24 +39,24 @@ class Simulator:
     def step(self, debug=False):
         dt_hours = self.time_step / 3600.0
 
-        # 1) reset heading_adjusted
+        # 1) Reset heading_adjusted.
         for sh in self.ships:
             sh.reset_heading_adjusted()
 
-        # 2) detect collisions
+        # 2) Detect collisions.
         collisions = self.detect_collisions()
         if not collisions:
             self.no_collision_count += 1
         else:
             self.no_collision_count = 0
 
-        # 3) if collision-free multiple steps => revert heading
+        # 3) If collision‑free for multiple steps, revert heading.
         if self.no_collision_count > 10:
             for sh in self.ships:
                 if sh.distance_to_destination() > self.destination_threshold:
                     self.revert_heading_with_clamp(sh)
 
-        # 4) multi-iteration collision resolution
+        # 4) Multi-iteration collision resolution.
         max_iters = 100
         for iteration in range(max_iters):
             collisions = self.detect_collisions()
@@ -66,60 +72,101 @@ class Simulator:
                 shipA = self.ships[i]
                 shipB = self.ships[j]
                 encounter = classify_encounter(shipA, shipB)
+                roles = self.assign_roles(shipA, shipB, encounter)
                 if debug:
                     print(f"Resolving {shipA.name} vs {shipB.name}, {encounter}, dist_cpa={dist_cpa:.3f}")
 
+                # Process based on encounter type:
                 if encounter == 'head-on':
                     impA = self.apply_multi_ship_starboard(shipA, debug=debug)
                     impB = self.apply_multi_ship_starboard(shipB, debug=debug)
                     if impA or impB:
+                        self.count_headon += 1
+                        if impA:
+                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in a head-on encounter with {shipB.name}, role: {roles[0]}.")
+                            self.collisions_avoided.append(msg)
+                        if impB:
+                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in a head-on encounter with {shipA.name}, role: {roles[1]}.")
+                            self.collisions_avoided.append(msg)
                         improved_any = True
+
                 elif encounter == 'crossing':
-                    # figure out who is give-way
                     if is_on_starboard_side(shipA, shipB):
-                        # A is give-way
                         impA = self.apply_multi_ship_starboard(shipA, debug=debug)
-                        if not impA:
+                        if impA:
+                            self.count_crossing += 1
+                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in a crossing encounter with {shipB.name}, role: {roles[0]}.")
+                            self.collisions_avoided.append(msg)
+                            improved_any = True
+                        else:
                             impB = self.apply_multi_ship_starboard(shipB, stand_on=True, debug=debug)
                             if impB:
+                                self.count_crossing += 1
+                                msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
+                                       f"in a crossing encounter with {shipA.name}, role: {roles[1]}.")
+                                self.collisions_avoided.append(msg)
                                 improved_any = True
-                        else:
-                            improved_any = True
                     else:
-                        # B is give-way
                         impB = self.apply_multi_ship_starboard(shipB, debug=debug)
-                        if not impB:
+                        if impB:
+                            self.count_crossing += 1
+                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in a crossing encounter with {shipA.name}, role: {roles[1]}.")
+                            self.collisions_avoided.append(msg)
+                            improved_any = True
+                        else:
                             impA = self.apply_multi_ship_starboard(shipA, stand_on=True, debug=debug)
                             if impA:
+                                self.count_crossing += 1
+                                msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
+                                       f"in a crossing encounter with {shipB.name}, role: {roles[0]}.")
+                                self.collisions_avoided.append(msg)
                                 improved_any = True
-                        else:
-                            improved_any = True
+
                 else:  # overtaking
                     bearingAB = abs(relative_bearing_degs(shipA, shipB))
                     if 110 < bearingAB < 250:
-                        # B behind A
                         impB = self.apply_multi_ship_starboard(shipB, debug=debug)
-                        if not impB:
+                        if impB:
+                            self.count_overtaking += 1
+                            msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in an overtaking encounter with {shipA.name}, role: {roles[1]}.")
+                            self.collisions_avoided.append(msg)
+                            improved_any = True
+                        else:
                             impA = self.apply_multi_ship_starboard(shipA, stand_on=True, debug=debug)
                             if impA:
+                                self.count_overtaking += 1
+                                msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
+                                       f"in an overtaking encounter with {shipB.name}, role: {roles[0]}.")
+                                self.collisions_avoided.append(msg)
                                 improved_any = True
-                        else:
-                            improved_any = True
                     else:
                         impA = self.apply_multi_ship_starboard(shipA, debug=debug)
-                        if not impA:
+                        if impA:
+                            self.count_overtaking += 1
+                            msg = (f"{shipA.name} avoided collision at time {self.current_time:.1f}s "
+                                   f"in an overtaking encounter with {shipB.name}, role: {roles[0]}.")
+                            self.collisions_avoided.append(msg)
+                            improved_any = True
+                        else:
                             impB = self.apply_multi_ship_starboard(shipB, stand_on=True, debug=debug)
                             if impB:
+                                self.count_overtaking += 1
+                                msg = (f"{shipB.name} avoided collision at time {self.current_time:.1f}s "
+                                       f"in an overtaking encounter with {shipA.name}, role: {roles[1]}.")
+                                self.collisions_avoided.append(msg)
                                 improved_any = True
-                        else:
-                            improved_any = True
 
             if not improved_any:
                 if debug:
                     print(f"No improvements iteration {iteration}, stopping.")
                 break
 
-        # 5) move ships
+        # 5) Move ships.
         for sh in self.ships:
             if sh.distance_to_destination() > self.destination_threshold:
                 sh.update_position(dt_hours)
@@ -129,9 +176,6 @@ class Simulator:
             print(f"Completed step. time={self.current_time} s.\n")
 
     def detect_collisions(self):
-        """
-        Return list of (dist_cpa, t_cpa, i, j) for pairs with dist_cpa < 2.1 * safe_distance, sorted by tcpa
-        """
         pairs = []
         n = len(self.ships)
         for i in range(n):
@@ -139,7 +183,7 @@ class Simulator:
                 dist_cpa, t_cpa = compute_cpa_and_tcpa(self.ships[i], self.ships[j])
                 if dist_cpa < 4 * self.safe_distance:
                     pairs.append((dist_cpa, t_cpa, i, j))
-        pairs.sort(key=lambda x: (x[1], x[0]))  # sort by t_cpa, then dist_cpa
+        pairs.sort(key=lambda x: (x[1], x[0]))
         return pairs
 
     def apply_multi_ship_starboard(self, ship, stand_on=False, debug=False):
@@ -148,18 +192,14 @@ class Simulator:
             max_range = min(self.heading_search_range, 10.0)
         else:
             max_range = self.heading_search_range
-
-        # how many degrees remain for starboard in this step
         remaining_turn = max_range - ship.heading_adjusted
         if remaining_turn <= 0:
             if debug:
-                print(f"   {ship.name} has no remaining turn allowed (stand_on={stand_on}).")
+                print(f"{ship.name} has no remaining turn allowed (stand_on={stand_on}).")
             return False
-
         current_cpa = self.compute_min_cpa_over_others(ship, base_heading)
         best_cpa = current_cpa
         best_offset = 0.0
-
         step = self.heading_search_step
         increments = np.arange(step, remaining_turn + 0.0001, step)
         for offset in increments:
@@ -168,7 +208,6 @@ class Simulator:
             if test_cpa > best_cpa:
                 best_cpa = test_cpa
                 best_offset = offset
-
         if best_offset > 0:
             new_heading = base_heading - best_offset
             ship.heading = new_heading
@@ -176,52 +215,41 @@ class Simulator:
             msg = f"{ship.name} turned starboard {best_offset:.1f} deg => new heading={new_heading:.1f}"
             self.ui_log.append(msg)
             if debug:
-                print("   " + msg + f", CPA {current_cpa:.3f} -> {best_cpa:.3f}")
+                print(msg + f", CPA {current_cpa:.3f} -> {best_cpa:.3f}")
             return True
-
         if debug:
-            print(f"   {ship.name} no offset improves CPA (stand_on={stand_on}).")
+            print(f"{ship.name} no offset improves CPA (stand_on={stand_on}).")
         return False
 
     def compute_min_cpa_over_others(self, give_ship, test_heading):
         old_heading = give_ship.heading
         give_ship.heading = test_heading
-
         min_cpa = float('inf')
         for s in self.ships:
             if s is not give_ship:
                 dist_cpa, _ = compute_cpa_and_tcpa(give_ship, s)
                 if dist_cpa < min_cpa:
                     min_cpa = dist_cpa
-
         give_ship.heading = old_heading
         return min_cpa
 
     def revert_heading_with_clamp(self, ship):
-        """
-        Gradually revert 'ship.heading' toward ship.compute_heading_to_destination(),
-        but do not exceed heading_search_range in one step.
-        """
         curr_hd = ship.heading
         dest_hd = ship.compute_heading_to_destination()
-
         diff = dest_hd - curr_hd
         while diff > 180:
             diff -= 360
         while diff <= -180:
             diff += 360
-
         max_turn = self.heading_search_range
         if diff > max_turn:
             diff = max_turn
         elif diff < -max_turn:
             diff = -max_turn
-
         ship.heading = curr_hd + diff
 
     def all_ships_arrived(self):
-        return all(s.distance_to_destination() < self.destination_threshold
-                   for s in self.ships)
+        return all(s.distance_to_destination() < self.destination_threshold for s in self.ships)
 
     def get_collisions_with_roles(self):
         results = []
@@ -246,7 +274,7 @@ class Simulator:
                 return ("Stand-On", "Give-Way")
             else:
                 return ("Give-Way", "Stand-On")
-        else:  # overtaking
+        else:
             bearingAB = abs(relative_bearing_degs(shipA, shipB))
             if 110 < bearingAB < 250:
                 return ("Stand-On", "Give-Way")
