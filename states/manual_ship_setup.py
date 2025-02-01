@@ -1,8 +1,8 @@
 # states/manual_ship_setup.py
 import pygame
-from config import BASE_RESOLUTIONS, BG_COLOR
+from config import BASE_RESOLUTIONS, BG_COLOR, BG_SCROLL_SPEED
 from ui_component import TextBox
-from draw_utils import draw_button, draw_minimap
+from draw_utils import draw_button, draw_minimap, draw_scrolling_bg
 import math
 
 def create_ship_boxes(num, font):
@@ -31,7 +31,11 @@ class ManualShipSetupState:
             "back": pygame.Rect(50, 600, 120, 40),
             "start": pygame.Rect(250, 600, 120, 40)
         }
-    
+        # For moving background:
+        self.bg_img = None
+        self.bg_scroll_x = 0.0
+        self.last_dt = 0.0
+
     def handle_events(self, events):
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
@@ -74,6 +78,7 @@ class ManualShipSetupState:
                     tb.handle_event(event)
     
     def update(self, dt):
+        self.last_dt = dt
         current_w, current_h = self.screen.get_size()
         base_w, base_h = self.base_resolution
         self.scale_x = current_w / base_w
@@ -89,9 +94,19 @@ class ManualShipSetupState:
         for row in self.ship_boxes:
             for tb in row:
                 tb.update_rect(self.scale_x, self.scale_y)
+        # Load background image if not loaded
+        if self.bg_img is None:
+            try:
+                self.bg_img = pygame.image.load("./images/sea_bg.png").convert()
+            except:
+                self.bg_img = None
     
     def render(self, screen):
-        screen.fill(BG_COLOR)
+        # Draw moving background first
+        if self.bg_img:
+            self.bg_scroll_x = draw_scrolling_bg(screen, self.bg_img, self.bg_scroll_x, BG_SCROLL_SPEED, self.last_dt)
+        else:
+            screen.fill(BG_COLOR)
         header = self.font.render("Speed | Start(x,y) | Dest(x,y) | Length(m) | Width(m)", True, (255,255,255))
         screen.blit(header, (80 * self.scale_x, 90 * self.scale_y))
         y = 150
