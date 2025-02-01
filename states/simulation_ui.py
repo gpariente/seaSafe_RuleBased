@@ -40,7 +40,7 @@ class SimulationState:
                     self.compare_mode = not self.compare_mode
                 elif self.btn_next.collidepoint(event.pos) and self.scenario_finished:
                     from states.stats import StatsState
-                    self.next_state = StatsState(self.screen, self.sim)
+                    self.next_state = StatsState(self.screen, self, self.scenario_data)
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
                     self.paused = not self.paused

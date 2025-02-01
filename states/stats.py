@@ -4,9 +4,10 @@ from config import BASE_RESOLUTIONS, BG_COLOR
 from draw_utils import draw_button
 
 class StatsState:
-    def __init__(self, screen, sim):
+    def __init__(self, screen, sim_state, scenario_data):
         self.screen = screen
-        self.sim = sim
+        self.sim_state = sim_state  # Store the full SimulationState instance.
+        self.scenario_data = scenario_data  # Stored separately if needed.
         self.font = pygame.font.SysFont(None, 28)
         self.base_resolution = BASE_RESOLUTIONS["stats"]
         self.next_state = None
@@ -15,8 +16,8 @@ class StatsState:
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if self.btn_back_stats.collidepoint(event.pos):
-                    from states.simulation_ui import SimulationState
-                    self.next_state = SimulationState(self.screen, self.sim.scenario_data)
+                    # Return the stored simulation state (with its finished run) 
+                    self.next_state = self.sim_state
                 elif self.btn_main_menu.collidepoint(event.pos):
                     from states.main_menu import MainMenuState
                     self.next_state = MainMenuState(self.screen)
@@ -35,9 +36,9 @@ class StatsState:
         screen.fill(BG_COLOR)
         y_offset = 50
         lines = []
-        lines.append(f"Total Simulation Time: {self.sim.current_time:.1f} s")
+        lines.append(f"Total Simulation Time: {self.sim_state.sim.current_time:.1f} s")
         lines.append("")
-        lines.append("Heading Adjustments: " + str(len(self.sim.ui_log) if hasattr(self.sim, "ui_log") else 0))
+        lines.append("Heading Adjustments: " + str(len(self.sim_state.sim.ui_log) if hasattr(self.sim_state.sim, "ui_log") else 0))
         lines.append("")
         lines.append("Classifications:")
         lines.append("  Head-on: 0")
