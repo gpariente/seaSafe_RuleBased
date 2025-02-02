@@ -1,4 +1,18 @@
 # states/auto_mode.py
+"""
+Auto Mode State Module
+
+This module provides the AutoModeState class used for the automatic setup mode in SeaSafe.
+In this mode, the user can load a JSON file containing a scenario setup. The JSON data is
+validated against a set of rules (e.g., map size, safety zone, heading range, and per-ship data).
+If the JSON data is valid, the simulation will start using the loaded scenario.
+
+It also provides helper functions:
+    - load_json_file(): Opens a file dialog for the user to select a JSON file and loads it.
+    - validate_json_data(data): Validates the JSON data against required rules.
+
+"""
+
 import pygame
 import json
 import tkinter as tk
@@ -8,8 +22,14 @@ from draw_utils import draw_button, draw_scrolling_bg
 from states.simulation_ui import SimulationState
 
 def load_json_file():
+    """
+    Opens a file dialog to allow the user to select a JSON file and loads the file.
+
+    Returns:
+        dict or None: The JSON data as a dictionary if loaded successfully; otherwise, None.
+    """
     root = tk.Tk()
-    root.withdraw()
+    root.withdraw()  # Hide the main Tkinter window.
     file_path = fd.askopenfilename(filetypes=[("JSON Files", "*.json")])
     root.destroy()
     if file_path:
@@ -23,19 +43,26 @@ def load_json_file():
 
 def validate_json_data(data):
     """
-    Validate the JSON data according to the following rules:
-      - "map_size": positive, ≤ 20
-      - "safe_distance": positive
-      - "heading_range": positive, ≤ 90
-      - "heading_step": positive
-      - "time_step": positive
-      - "ships": list of ships with count between 2 and 8
-      For each ship (assumed to be a dict):
-          - "start_x", "start_y", "dest_x", "dest_y": numbers between 0 and map_size
-          - "speed": > 0 and ≤ 50
-          - "length_m": > 0 and ≤ 800
-          - "width_m": > 0 and ≤ 200
-    Returns a tuple (is_valid, message).
+    Validates the JSON data against a set of rules:
+      - "map_size": Must be positive and ≤ 20.
+      - "safe_distance": Must be positive.
+      - "heading_range": Must be positive and ≤ 90.
+      - "heading_step": Must be positive.
+      - "time_step": Must be positive.
+      - "ships": Must be a list with 2 to 8 elements.
+      For each ship dictionary, the following must be true:
+          - "start_x", "start_y", "dest_x", "dest_y": Must be numbers between 0 and map_size.
+          - "speed": Must be > 0 and ≤ 50.
+          - "length_m": Must be > 0 and ≤ 800.
+          - "width_m": Must be > 0 and ≤ 200.
+
+    Parameters:
+        data (dict): The JSON data loaded from file.
+
+    Returns:
+        tuple: (is_valid (bool), message (str))
+               If valid, returns (True, "JSON loaded successfully.").
+               Otherwise, returns (False, "<appropriate error message>").
     """
     try:
         map_size = float(data.get("map_size", 0))
@@ -60,21 +87,21 @@ def validate_json_data(data):
             return (False, "#Ships must be between 2 and 8.")
 
         for i, ship in enumerate(ships):
-            # Validate start coordinates
+            # Validate start coordinates.
             sx = float(ship.get("start_x", -1))
             sy = float(ship.get("start_y", -1))
             if sx < 0 or sy < 0 or sx > map_size or sy > map_size:
                 return (False, f"Ship {i+1} start coordinates must be between 0 and {map_size}.")
-            # Validate destination coordinates
+            # Validate destination coordinates.
             dx = float(ship.get("dest_x", -1))
             dy = float(ship.get("dest_y", -1))
             if dx < 0 or dy < 0 or dx > map_size or dy > map_size:
                 return (False, f"Ship {i+1} destination coordinates must be between 0 and {map_size}.")
-            # Validate speed
+            # Validate speed.
             speed = float(ship.get("speed", 0))
             if speed <= 0 or speed > 50:
                 return (False, f"Ship {i+1} speed must be > 0 and ≤ 50.")
-            # Validate length and width
+            # Validate length and width.
             length_m = float(ship.get("length_m", 0))
             if length_m <= 0 or length_m > 800:
                 return (False, f"Ship {i+1} length must be > 0 and ≤ 800.")
@@ -87,23 +114,36 @@ def validate_json_data(data):
 
 class AutoModeState:
     def __init__(self, screen):
+        """
+        Initializes the AutoModeState.
+
+        Parameters:
+            screen (pygame.Surface): The main display surface.
+        """
         self.screen = screen
         self.font = pygame.font.SysFont(None, 28)
         self.next_state = None
         self.base_resolution = BASE_RESOLUTIONS["auto_mode"]
+        # Define buttons for navigation.
         self.buttons = {
             "back": pygame.Rect(50, 500, 100, 40),
-            "load": pygame.Rect(300, 250, 200, 50),  
+            "load": pygame.Rect(300, 250, 200, 50),  # Positioned to avoid overlap with the logo.
             "start": pygame.Rect(300, 350, 200, 50)
         }
-        self.warning_msg = ""
-        self.automatic_loaded_ok = False
-        self.json_data = None
-        self.bg_img = None
-        self.logo_img = None
-        self.bg_scroll_x = 0.0
+        self.warning_msg = ""           # Holds warning or status messages.
+        self.automatic_loaded_ok = False  # Flag indicating whether valid JSON data has been loaded.
+        self.json_data = None           # Holds the loaded JSON data.
+        self.bg_img = None              # Background image.
+        self.logo_img = None            # Logo image.
+        self.bg_scroll_x = 0.0          # Current horizontal scroll offset for the background.
 
     def handle_events(self, events):
+        """
+        Handles Pygame events for the auto mode state.
+
+        Parameters:
+            events (list): List of Pygame events.
+        """
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
                 pos = event.pos
@@ -132,6 +172,12 @@ class AutoModeState:
                         self.warning_msg = "No valid JSON loaded!"
     
     def update(self, dt):
+        """
+        Updates the state of the AutoMode screen, including scaling UI elements and background.
+
+        Parameters:
+            dt (float): The elapsed time in seconds since the last update.
+        """
         current_w, current_h = self.screen.get_size()
         base_w, base_h = self.base_resolution
         self.scale_x = current_w / base_w
@@ -144,7 +190,7 @@ class AutoModeState:
                 int(rect.width * self.scale_x),
                 int(rect.height * self.scale_y)
             )
-        # Load and update background image
+        # Load and update background image.
         if self.bg_img is None:
             try:
                 self.bg_img = pygame.image.load("./images/sea_bg.png").convert()
@@ -152,7 +198,7 @@ class AutoModeState:
                 self.bg_img = None
         if self.bg_img:
             self.bg_scroll_x = draw_scrolling_bg(self.screen, self.bg_img, self.bg_scroll_x, BG_SCROLL_SPEED, dt)
-        # Load logo (if not loaded)
+        # Load logo if not already loaded.
         if self.logo_img is None:
             try:
                 self.logo_img = pygame.image.load("./images/logo.png").convert_alpha()
@@ -162,26 +208,38 @@ class AutoModeState:
                 self.logo_img = None
 
     def render(self, screen):
-        # Draw background
+        """
+        Renders the AutoMode state UI, including background, logo, buttons, and warning messages.
+
+        Parameters:
+            screen (pygame.Surface): The display surface.
+        """
+        # Draw background (if already drawn in update, no further action needed).
         if self.bg_img:
-            # Background already drawn in update via draw_scrolling_bg
             pass
         else:
             screen.fill(BG_COLOR)
-        # Draw logo at top (so buttons appear below)
+        # Draw logo at the top center.
         if self.logo_img:
             logo_x = (screen.get_width() - self.logo_img.get_width()) // 2
             logo_y = int(30 * self.scale_y)
             screen.blit(self.logo_img, (logo_x, logo_y))
-        # Draw buttons
-        draw_button(screen, self.scaled_buttons["back"], "Back", self.font, color=(0,100,180))
-        draw_button(screen, self.scaled_buttons["load"], "Load JSON", self.font, color=(0,100,180))
-        draw_button(screen, self.scaled_buttons["start"], "Start", self.font, color=(0,100,180))
+        # Draw UI buttons.
+        draw_button(screen, self.scaled_buttons["back"], "Back", self.font, color=(0, 100, 180))
+        draw_button(screen, self.scaled_buttons["load"], "Load JSON", self.font, color=(0, 100, 180))
+        draw_button(screen, self.scaled_buttons["start"], "Start", self.font, color=(0, 100, 180))
+        # Display any warning or status message.
         if self.warning_msg:
-            warning = self.font.render(self.warning_msg, True, (255,0,0))
+            warning = self.font.render(self.warning_msg, True, (255, 0, 0))
             screen.blit(warning, (int(200 * self.scale_x), int(450 * self.scale_y)))
     
     def get_next_state(self):
+        """
+        Retrieves the next state to transition to, if any.
+
+        Returns:
+            The next state object or None if no transition is requested.
+        """
         next_state = self.next_state
         self.next_state = None
         return next_state
