@@ -6,7 +6,7 @@ BASE_RESOLUTIONS = {
     "auto_mode": (800, 600),
     "manual_scenario": (800, 600),
     "manual_ship_setup": (900, 700),
-    "simulation": (880, 920),  # 60+800+20 by 20+800+60+40
+    "simulation": (880, 920),  
     "stats": (800, 840)
 }
 

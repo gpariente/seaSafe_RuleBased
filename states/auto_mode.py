@@ -93,7 +93,7 @@ class AutoModeState:
         self.base_resolution = BASE_RESOLUTIONS["auto_mode"]
         self.buttons = {
             "back": pygame.Rect(50, 500, 100, 40),
-            "load": pygame.Rect(300, 250, 200, 50),  # Moved down to avoid logo
+            "load": pygame.Rect(300, 250, 200, 50),  
             "start": pygame.Rect(300, 350, 200, 50)
         }
         self.warning_msg = ""
