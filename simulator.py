@@ -1,4 +1,3 @@
-# simulator.py
 import math
 import numpy as np
 
@@ -43,7 +42,7 @@ class Simulator:
         self.destination_threshold = 0.1  # NM
         self.no_collision_count = 0  # consecutive steps collision-free
 
-        # New counters for encounter types.
+        # Counters for encounter types.
         self.count_headon = 0
         self.count_crossing = 0
         self.count_overtaking = 0
@@ -181,14 +180,25 @@ class Simulator:
 
         # 5) Move ships.
         for sh in self.ships:
-            if sh.distance_to_destination() > self.destination_threshold:
+            # If the ship has arrived and its arrival time is not recorded, record it.
+            if sh.distance_to_destination() < self.destination_threshold:
+                if sh.arrival_time is None:
+                    sh.arrival_time = self.current_time
+            else:
                 sh.update_position(dt_hours)
 
+        # Increment the simulation time.
         self.current_time += self.time_step
         if debug:
             print(f"Completed step. time={self.current_time} s.\n")
 
     def detect_collisions(self):
+        """
+        Detects collisions between ships based on the CPA (Closest Point of Approach).
+
+        Returns:
+            list of tuples: Each tuple contains (dist_cpa, t_cpa, i, j) where i and j are ship indices.
+        """
         pairs = []
         n = len(self.ships)
         for i in range(n):
@@ -200,6 +210,17 @@ class Simulator:
         return pairs
 
     def apply_multi_ship_starboard(self, ship, stand_on=False, debug=False):
+        """
+        Attempts to adjust a ship's heading to improve its CPA relative to other ships.
+
+        Parameters:
+            ship (Ship): The ship to adjust.
+            stand_on (bool): If True, restricts the adjustment (for the stand-on vessel).
+            debug (bool): If True, prints debug information.
+
+        Returns:
+            bool: True if an adjustment was made; False otherwise.
+        """
         base_heading = ship.heading
         if stand_on:
             max_range = min(self.heading_search_range, 10.0)
@@ -233,6 +254,16 @@ class Simulator:
         return False
 
     def compute_min_cpa_over_others(self, give_ship, test_heading):
+        """
+        Computes the minimum CPA for a given ship against all other ships, if the ship used a specified test heading.
+
+        Parameters:
+            give_ship (Ship): The ship for which to compute the CPA.
+            test_heading (float): The heading to test.
+
+        Returns:
+            float: The minimum CPA (in NM).
+        """
         old_heading = give_ship.heading
         give_ship.heading = test_heading
         min_cpa = float('inf')
@@ -245,6 +276,12 @@ class Simulator:
         return min_cpa
 
     def revert_heading_with_clamp(self, ship):
+        """
+        Reverts a ship's heading toward its destination, limited by the maximum allowed turn.
+
+        Parameters:
+            ship (Ship): The ship whose heading is to be reverted.
+        """
         curr_hd = ship.heading
         dest_hd = ship.compute_heading_to_destination()
         diff = dest_hd - curr_hd
@@ -260,9 +297,21 @@ class Simulator:
         ship.heading = curr_hd + diff
 
     def all_ships_arrived(self):
+        """
+        Checks if all ships have reached their destination.
+
+        Returns:
+            bool: True if every ship's distance to destination is below the threshold; otherwise, False.
+        """
         return all(s.distance_to_destination() < self.destination_threshold for s in self.ships)
 
     def get_collisions_with_roles(self):
+        """
+        Retrieves a list of collisions along with assigned roles for each encounter.
+
+        Returns:
+            list of tuples: Each tuple contains (dist_cpa, i, j, encounter, roleA, roleB).
+        """
         results = []
         collisions = self.detect_collisions()
         for dist_cpa, t_cpa, i, j in collisions:
@@ -276,6 +325,17 @@ class Simulator:
         return results
 
     def assign_roles(self, shipA, shipB, encounter_type):
+        """
+        Determines the roles (Give-Way or Stand-On) for two ships based on the encounter type.
+
+        Parameters:
+            shipA (Ship): The first ship.
+            shipB (Ship): The second ship.
+            encounter_type (str): The type of encounter ('head-on', 'crossing', or 'overtaking').
+
+        Returns:
+            tuple: (roleA, roleB) where each role is a string ("Give-Way" or "Stand-On").
+        """
         if encounter_type == 'head-on':
             return ("Give-Way", "Give-Way")
         elif encounter_type == 'crossing':

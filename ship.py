@@ -28,6 +28,7 @@ class Ship:
         self.dest_y = dest_y
         self.length_m = length_m
         self.width_m = width_m
+        self.arrival_time = None
         
         # Initialize heading toward the destination.
         self.heading = self.compute_heading_to_destination()
