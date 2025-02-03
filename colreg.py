@@ -96,11 +96,11 @@ def classify_encounter(shipA, shipB):
     bearingBA = abs(relative_bearing_degs(shipB, shipA))
 
     # Both ships see each other nearly directly ahead.
-    if bearingAB < 10 and bearingBA < 10:
+    if bearingAB < 12.5 and bearingBA < 12.5:
         return 'head-on'
 
     # At least one ship sees the other nearly 180° away.
-    if (110 < bearingAB < 250) or (110 < bearingBA < 250):
+    if (112.5 < bearingAB < 250) or (112.5 < bearingBA < 250):
         return 'overtaking'
 
     # All other cases are considered crossing encounters.
