@@ -11,6 +11,7 @@ to the Manual Mode, Automatic Mode, or exit the application.
 import pygame
 from config import BASE_RESOLUTIONS, BG_COLOR, BG_SCROLL_SPEED
 from draw_utils import draw_button, draw_scrolling_bg
+from resource_path import resource_path
 from states.manual_scenario import ManualScenarioState
 from states.auto_mode import AutoModeState
 
@@ -86,9 +87,12 @@ class MainMenuState:
         # Load background image if not already loaded.
         if self.bg_img is None:
             try:
-                self.bg_img = pygame.image.load("./images/sea_bg.png").convert()
-            except:
-                self.bg_img = None
+                self.bg_img = pygame.image.load(resource_path("images/sea_bg.png")).convert()
+            except Exception as e:
+                print("Error loading sea_bg:", e)
+                self.bg_img = pygame.Surface((800, 600))
+                self.bg_img.fill((0, 100, 200))
+
         # Update background scroll position if a background image is available.
         if self.bg_img:
             self.bg_scroll_x = draw_scrolling_bg(self.screen, self.bg_img, self.bg_scroll_x, BG_SCROLL_SPEED, dt)
@@ -106,12 +110,15 @@ class MainMenuState:
         # Load and draw the logo if not already loaded.
         if self.logo_img is None:
             try:
-                self.logo_img = pygame.image.load("./images/logo.png").convert_alpha()
-                # Scale the logo by a factor of 2.
-                self.logo_img = pygame.transform.scale(self.logo_img, (self.logo_img.get_width() * 2,
-                                                                       self.logo_img.get_height() * 2))
-            except:
-                self.logo_img = None
+                # Load the logo image.
+                logo = pygame.image.load(resource_path("images/logo.png")).convert_alpha()
+                # Expand the logo: scale it by a factor of 2 (or adjust as needed).
+                self.logo_img = pygame.transform.scale(logo, (logo.get_width() * 2, logo.get_height() * 2))
+            except Exception as e:
+                print("Error loading logo:", e)
+                self.logo_img = pygame.Surface((200, 100), pygame.SRCALPHA)
+                pygame.draw.rect(self.logo_img, (255, 255, 255, 180), self.logo_img.get_rect())
+
         if self.logo_img:
             logo_x = (screen.get_width() - self.logo_img.get_width()) // 2
             logo_y = int(30 * self.scale_y)

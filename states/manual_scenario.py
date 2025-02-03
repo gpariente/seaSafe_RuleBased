@@ -12,6 +12,7 @@ according to specified rules before proceeding to the Manual Ship Setup state.
 
 import pygame
 from config import BASE_RESOLUTIONS, BG_COLOR, BG_SCROLL_SPEED
+from resource_path import resource_path
 from ui_component import TextBox
 from draw_utils import draw_button, draw_scrolling_bg
 from states.manual_ship_setup import ManualShipSetupState
@@ -173,9 +174,12 @@ class ManualScenarioState:
         # Load background image if not already loaded.
         if self.bg_img is None:
             try:
-                self.bg_img = pygame.image.load("./images/sea_bg.png").convert()
-            except:
-                self.bg_img = None
+                self.bg_img = pygame.image.load(resource_path("images/sea_bg.png")).convert()
+            except Exception as e:
+                print("Error loading sea_bg:", e)
+                self.bg_img = pygame.Surface((800, 600))
+                self.bg_img.fill((0, 100, 200))
+
 
     def render(self, screen):
         """
