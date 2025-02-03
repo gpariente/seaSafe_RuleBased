@@ -1,8 +1,8 @@
 {
-  "map_size": 6.0,
+  "map_size": 10.0,
   "num_ships": 2,
   "safe_distance": 0.2,
-  "heading_range": 10,
+  "heading_range": 20,
   "heading_step": 5,
   "time_step": 30,
   "ships": [
@@ -13,16 +13,16 @@
       "speed": 20,
       "start_x": 0.0,
       "start_y": 0.0,
-      "dest_x": 6.0,
-      "dest_y": 6.0
+      "dest_x": 10.0,
+      "dest_y": 10.0
     },
     {
       "name": "ShipB",
       "length_m": 400,
       "width_m": 100,
       "speed": 20,
-      "start_x": 6.0,
-      "start_y": 6.0,
+      "start_x": 10.0,
+      "start_y": 10.0,
       "dest_x": 0.0,
       "dest_y": 0.0
     }
