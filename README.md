@@ -1,5 +1,7 @@
 # seaSafe Simulator 🚢
 
+### Important - The files of phase A of the project are in the folder PhaseA, and the files for Phase B (Poster,Paper and Video) are in the Phase B folder. Have Fun exploring the project! 🛳️
+
 SeaSafe is a maritime collision avoidance simulator designed to test and validate a rule-based algorithm for ship navigation in compliance with the **International Regulations for Preventing Collisions at Sea (COLREGs)**.
 The simulator enables users to configure and run scenarios involving multiple ships, observing how they navigate and avoid collisions dynamically.
 
