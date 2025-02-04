@@ -7,7 +7,6 @@ in a manually defined scenario. In this state, users specify each ship’s speed
 destination coordinates, length, and width. The inputs are validated against defined criteria (e.g.,
 speed ≤ 50, length ≤ 800, width ≤ 200, and coordinates within the map). A minimap is displayed to help
 visualize the ship positions.
-
 """
 
 import pygame
@@ -67,7 +66,7 @@ class ManualShipSetupState:
             "start": pygame.Rect(250, 600, 120, 40)
         }
         
-        # For moving background.
+        # For moving background:
         self.bg_img = None
         self.bg_scroll_x = 0.0
         self.last_dt = 0.0
@@ -87,6 +86,7 @@ class ManualShipSetupState:
             - Ship width must be > 0 and ≤ 200.
             - Start and destination fields must contain two comma-separated numbers,
               each within the range [0, scenario_data["map_size"]].
+            - No two ships can have the same source and destination coordinates.
         
         Returns:
             tuple: (is_valid (bool), message (str))
@@ -94,6 +94,9 @@ class ManualShipSetupState:
                    Otherwise, returns (False, <error message>).
         """
         map_size = self.scenario_data.get("map_size", 6.0)
+        # To check for duplicate (source, destination) pairs.
+        seen_points = set()
+        
         for i, row in enumerate(self.ship_boxes):
             # Validate speed (index 0)
             speed_str = row[0].get_str()
@@ -155,6 +158,17 @@ class ManualShipSetupState:
                 return (False, f"Ship {i+1}: Invalid numeric value for ship width.")
             if width_val <= 0 or width_val > 200:
                 return (False, f"Ship {i+1}: Ship width must be > 0 and <= 200.")
+            
+            # Check that the source and destination for this ship are not the same.
+            if start_str.strip() == dest_str.strip():
+                return (False, f"Ship {i+1}: Source and destination cannot be the same.")
+            
+            # Prepare a tuple (sx, sy, dx, dy) to check uniqueness across ships.
+            key = (sx, sy, dx, dy)
+            if key in seen_points:
+                return (False, "Ships must have different source/dest points")
+            seen_points.add(key)
+            
         return (True, "")
 
     def handle_events(self, events):
@@ -206,7 +220,6 @@ class ManualShipSetupState:
                         self.scenario_data["ships"] = ships
                         from states.simulation_ui import SimulationState
                         self.next_state = SimulationState(self.screen, self.scenario_data)
-            # Forward event handling to each textbox.
             for row in self.ship_boxes:
                 for tb in row:
                     tb.handle_event(event)
@@ -224,7 +237,6 @@ class ManualShipSetupState:
         self.scale_x = current_w / base_w
         self.scale_y = current_h / base_h
         
-        # Scale button positions.
         self.scaled_buttons = {}
         for key, rect in self.buttons.items():
             self.scaled_buttons[key] = pygame.Rect(
@@ -233,11 +245,9 @@ class ManualShipSetupState:
                 int(rect.width * self.scale_x),
                 int(rect.height * self.scale_y)
             )
-        # Update textboxes' rectangles.
         for row in self.ship_boxes:
             for tb in row:
                 tb.update_rect(self.scale_x, self.scale_y)
-        # Load background image if not already loaded.
         if self.bg_img is None:
             try:
                 self.bg_img = pygame.image.load(resource_path("images/sea_bg.png")).convert()
@@ -254,15 +264,12 @@ class ManualShipSetupState:
         Parameters:
             screen (pygame.Surface): The display surface.
         """
-        # Draw the scrolling background.
         if self.bg_img:
             self.bg_scroll_x = draw_scrolling_bg(screen, self.bg_img, self.bg_scroll_x, BG_SCROLL_SPEED, self.last_dt)
         else:
             screen.fill(BG_COLOR)
-        # Draw header text.
         header = self.font.render("Speed | Start(x,y) | Dest(x,y) | Length(m) | Width(m)", True, (255,255,255))
         screen.blit(header, (80 * self.scale_x, 90 * self.scale_y))
-        # Draw ship input rows.
         y = 150
         for i, row in enumerate(self.ship_boxes):
             ship_label = self.font.render(f"Ship {i+1}", True, (255,255,255))
@@ -270,10 +277,8 @@ class ManualShipSetupState:
             for tb in row:
                 tb.draw(screen)
             y += 60
-        # Draw navigation buttons.
         draw_button(screen, self.scaled_buttons["back"], "Back", self.font, color=(0,100,180))
         draw_button(screen, self.scaled_buttons["start"], "Start", self.font, color=(0,100,180))
-        # Draw a minimap (dummy version) showing ship source and destination points.
         dummy_ships = []
         ship_colors = [(0,255,0), (255,255,0), (128,128,128), (0,0,0), (128,0,128)]
         for i, row in enumerate(self.ship_boxes):
@@ -294,7 +299,6 @@ class ManualShipSetupState:
             dummy_ships.append(dummy_ship)
         draw_minimap(screen, dummy_ships, self.scenario_data["map_size"],
                      (700 * self.scale_x, 20 * self.scale_y), int(140 * self.scale_x))
-        # Draw any warning message under the button area (e.g., 20 pixels below the buttons).
         if self.warning_msg:
             warning = self.font.render(self.warning_msg, True, (255, 0, 0))
             screen.blit(warning, (300 * self.scale_x, (600 * self.scale_y) + 50))
