@@ -15,8 +15,12 @@ COLOR_NAMES = {
     (255, 255, 0): "Yellow",
     (128, 128, 128): "Gray",
     (0, 0, 0): "Black",
-    (128, 0, 128): "Purple"
+    (128, 0, 128): "Purple",
+    (0, 0, 255): "Blue",
+    (255, 0, 0): "Red",
+    (255, 165, 0): "Orange"
 }
+
 
 def get_color_name(color):
     return COLOR_NAMES.get(tuple(color), "Unknown")
